@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Trophy, Tag, Save, Download, Upload, ChevronDown, ChevronUp } from 'lucide-react';
+import { Trophy, Save, Download, Upload, ChevronDown, ChevronUp } from 'lucide-react';
 
 const GymTrackerV3 = () => {
   const [exercises, setExercises] = useState({});
