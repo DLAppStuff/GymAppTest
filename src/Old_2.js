@@ -19,39 +19,38 @@ import {
 
 const GymTrackerV3 = () => {
   /**
-   * ---------------------
-   * 1. State Hooks
-   * ---------------------
+   * State Hooks
    */
+  // Main data structures
   const [exercises, setExercises] = useState({});
   const [prs, setPRs] = useState({});
+
+  // UI states for modals
   const [showAddExerciseModal, setShowAddExerciseModal] = useState(false);
   const [showBackupModal, setShowBackupModal] = useState(false);
 
-  // For creating a new exercise
+  // New exercise form inputs
   const [newExerciseName, setNewExerciseName] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Push');
 
-  // Toggles for categories (hide/show all exercises)
+  // Toggles for categories (show/hide entire category)
   const [showCategory, setShowCategory] = useState({
     Push: true,
     Pull: true,
     Legs: true
   });
 
-  // Toggles for each exercise (hide/show its details)
+  // Toggles for individual exercises (show/hide exercise details)
   const [showExercise, setShowExercise] = useState({});
 
-  // Toggles for the graphs within an exercise
+  // Toggles for graphs (show/hide weight/volume charts per exercise)
   const [showGraphs, setShowGraphs] = useState({});
 
-  // Possible categories
+  // The list of possible categories
   const categories = ['Push', 'Pull', 'Legs'];
 
   /**
-   * ---------------------
-   * 2. Load/Save to Local Storage
-   * ---------------------
+   * Load data from local storage on component mount
    */
   useEffect(() => {
     const savedData = localStorage.getItem('gymProgress_v3');
@@ -62,6 +61,9 @@ const GymTrackerV3 = () => {
     }
   }, []);
 
+  /**
+   * Save data to local storage whenever exercises/prs change
+   */
   useEffect(() => {
     localStorage.setItem(
       'gymProgress_v3',
@@ -70,15 +72,8 @@ const GymTrackerV3 = () => {
   }, [exercises, prs]);
 
   /**
-   * ---------------------
-   * 3. Utility Functions
-   * ---------------------
-   */
-
-  /**
    * prepareWeightData
-   * Given an array of sets, returns an array of objects
-   * representing the max weight for each date, sorted by date.
+   * Returns an array of "max weight per day" from an exercise's sets.
    */
   const prepareWeightData = (sets) => {
     const dailyMaxes = sets.reduce((acc, set) => {
@@ -95,7 +90,7 @@ const GymTrackerV3 = () => {
 
   /**
    * addExercise
-   * Creates a new exercise in state with empty sets & daily volume.
+   * Creates a new exercise with the given name/category.
    */
   const addExercise = () => {
     if (newExerciseName.trim()) {
@@ -115,54 +110,48 @@ const GymTrackerV3 = () => {
 
   /**
    * addSet
-   * Adds a new set (with weight, reps, date) to a given exercise,
-   * updates daily volume, and checks for a new PR if needed.
+   * Adds a new weight x reps set to a given exercise. Updates daily volume and PR if needed.
    */
   const addSet = (exercise) => {
+    const date = new Date().toISOString().split('T')[0];
     const weightInput = document.getElementById(`${exercise}-weight`);
     const repsInput = document.getElementById(`${exercise}-reps`);
-    const dateInput = document.getElementById(`${exercise}-date`);
-
     const weight = parseFloat(weightInput.value);
     const reps = parseInt(repsInput.value);
-    const dateValue = dateInput.value;
 
-    if (weight && reps && dateValue) {
+    if (weight && reps) {
       setExercises((prev) => {
         const updatedExercise = { ...prev[exercise] };
-
         // Add the new set
-        const newSet = { date: dateValue, weight, reps };
+        const newSet = { date, weight, reps };
         updatedExercise.sets.push(newSet);
 
-        // Calculate daily volume for that date
+        // Calculate daily volume
         const dailyVolume = updatedExercise.sets
-          .filter((s) => s.date === dateValue)
+          .filter((set) => set.date === date)
           .reduce((total, s) => total + s.weight * s.reps, 0);
 
-        // Update or insert the daily volume entry
+        // Insert or update dailyVolume entry
         const existingVolumeIndex = updatedExercise.dailyVolume.findIndex(
-          (v) => v.date === dateValue
+          (v) => v.date === date
         );
         if (existingVolumeIndex !== -1) {
           updatedExercise.dailyVolume[existingVolumeIndex].volume = dailyVolume;
         } else {
-          updatedExercise.dailyVolume.push({ date: dateValue, volume: dailyVolume });
+          updatedExercise.dailyVolume.push({ date, volume: dailyVolume });
         }
 
-        // Check for a new Personal Record (PR)
+        // Check for PR
         if (weight > (prs[exercise]?.weight || 0)) {
           setPRs((prevPRs) => ({
             ...prevPRs,
-            [exercise]: { weight, date: dateValue }
+            [exercise]: { weight, date }
           }));
         }
 
         // Clear input fields
         weightInput.value = '';
         repsInput.value = '';
-        // Reset date to today (optional)
-        dateInput.value = new Date().toISOString().split('T')[0];
 
         return {
           ...prev,
@@ -174,7 +163,7 @@ const GymTrackerV3 = () => {
 
   /**
    * toggleGraphs
-   * Show/hide the progress charts for a given exercise.
+   * Show/hide the charts for a particular exercise.
    */
   const toggleGraphs = (exercise) => {
     setShowGraphs((prev) => ({
@@ -185,7 +174,7 @@ const GymTrackerV3 = () => {
 
   /**
    * toggleCategoryView
-   * Show/hide all exercises under a given category.
+   * Show/hide an entire category (Push, Pull, or Legs).
    */
   const toggleCategoryView = (cat) => {
     setShowCategory((prev) => ({
@@ -196,7 +185,7 @@ const GymTrackerV3 = () => {
 
   /**
    * toggleExerciseView
-   * Show/hide the details of a specific exercise.
+   * Show/hide the exercise details (inputs, sets, graphs button) for a single exercise.
    */
   const toggleExerciseView = (exerciseName) => {
     setShowExercise((prev) => ({
@@ -207,7 +196,7 @@ const GymTrackerV3 = () => {
 
   /**
    * handleExport
-   * Exports the current data (exercises + prs) to a .json file.
+   * Export the current exercises/prs as a .json file.
    */
   const handleExport = () => {
     const dataToExport = JSON.stringify({ exercises, prs }, null, 2);
@@ -223,7 +212,7 @@ const GymTrackerV3 = () => {
 
   /**
    * handleImport
-   * Prompts user to paste JSON data, then merges it into state if valid.
+   * Prompt user to paste in a JSON string and update the app state with it.
    */
   const handleImport = () => {
     const importedData = prompt('Paste your exported JSON data here:');
@@ -257,10 +246,10 @@ const GymTrackerV3 = () => {
         </button>
       </div>
 
-      {/* Render each category (Push, Pull, Legs) */}
+      {/* Loop over each category */}
       {categories.map((category) => (
         <div key={category} className="mb-8 border rounded-lg p-4">
-          {/* Category Header with Toggle */}
+          {/* Category Header (title + toggle button) */}
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-semibold">{category}</h2>
             <button
@@ -272,25 +261,20 @@ const GymTrackerV3 = () => {
             </button>
           </div>
 
-          {/* Only render exercises if the category is expanded */}
+          {/* Only render exercises if category is expanded */}
           {showCategory[category] &&
             Object.entries(exercises)
               .filter(([_, data]) => data.category === category)
               .map(([exercise, data]) => {
+                // If we haven't set a value for showExercise[exercise] yet, default to true
                 const isExerciseExpanded =
                   showExercise[exercise] !== undefined
                     ? showExercise[exercise]
                     : true;
 
-                // Pre-fill weight with the most recent set's weight
-                const lastWeight =
-                  data.sets.length > 0
-                    ? data.sets[data.sets.length - 1].weight
-                    : '';
-
                 return (
                   <div key={exercise} className="mb-4 bg-gray-50 rounded-lg p-4">
-                    {/* Exercise Header: Name, PR, Toggle Button */}
+                    {/* Exercise Header (Name + PR + Expand/Collapse button) */}
                     <div className="flex justify-between items-center mb-4">
                       <div>
                         <h3 className="text-lg font-medium">{exercise}</h3>
@@ -303,6 +287,7 @@ const GymTrackerV3 = () => {
                           </div>
                         )}
                       </div>
+                      {/* Button to show/hide all details of this exercise */}
                       <button
                         onClick={() => toggleExerciseView(exercise)}
                         className="flex items-center gap-1 bg-gray-300 px-3 py-1 rounded"
@@ -312,17 +297,16 @@ const GymTrackerV3 = () => {
                       </button>
                     </div>
 
-                    {/* If exercise is expanded, show its details */}
+                    {/* Only render the exercise details if it is expanded */}
                     {isExerciseExpanded && (
                       <>
-                        {/* Inputs row: Weight, Reps, Date */}
-                        <div className="grid grid-cols-3 gap-4 mb-4">
+                        {/* Inputs to add a new set */}
+                        <div className="grid grid-cols-2 gap-4 mb-4">
                           <input
                             id={`${exercise}-weight`}
                             type="number"
                             placeholder="Weight (kg)"
                             className="border rounded p-2"
-                            defaultValue={lastWeight}
                           />
                           <input
                             id={`${exercise}-reps`}
@@ -330,16 +314,9 @@ const GymTrackerV3 = () => {
                             placeholder="Reps"
                             className="border rounded p-2"
                           />
-                          <input
-                            id={`${exercise}-date`}
-                            type="date"
-                            // Default to today's date
-                            defaultValue={new Date().toISOString().split('T')[0]}
-                            className="border rounded p-2"
-                          />
                           <button
                             onClick={() => addSet(exercise)}
-                            className="col-span-3 bg-green-500 text-white p-2 rounded"
+                            className="col-span-2 bg-green-500 text-white p-2 rounded"
                           >
                             Add Set
                           </button>
@@ -352,7 +329,8 @@ const GymTrackerV3 = () => {
                             {data.sets
                               .filter(
                                 (set) =>
-                                  set.date === new Date().toISOString().split('T')[0]
+                                  set.date ===
+                                  new Date().toISOString().split('T')[0]
                               )
                               .map((set, idx) => (
                                 <div
@@ -365,7 +343,7 @@ const GymTrackerV3 = () => {
                           </div>
                         </div>
 
-                        {/* Button to show/hide graphs */}
+                        {/* Graph toggle button + Graphs */}
                         <div className="flex items-center gap-2 mb-4">
                           <button
                             onClick={() => toggleGraphs(exercise)}
@@ -376,14 +354,11 @@ const GymTrackerV3 = () => {
                           </button>
                         </div>
 
-                        {/* Graphs (stacked) */}
                         {showGraphs[exercise] && (
-                          <div>
+                          <div className="grid grid-cols-2 gap-4">
                             {/* Max Weight Progress */}
-                            <div className="h-64 mb-6">
-                              <h4 className="font-medium mb-2">
-                                Max Weight Progress
-                              </h4>
+                            <div className="h-64">
+                              <h4 className="font-medium mb-2">Max Weight Progress</h4>
                               <ResponsiveContainer width="100%" height="100%">
                                 <LineChart data={prepareWeightData(data.sets)}>
                                   <CartesianGrid strokeDasharray="3 3" />
@@ -427,7 +402,7 @@ const GymTrackerV3 = () => {
         </div>
       ))}
 
-      {/* Floating "+" button to add a new exercise */}
+      {/* Floating button to add a new exercise */}
       <div className="fixed bottom-4 right-4">
         <button
           onClick={() => setShowAddExerciseModal(true)}
