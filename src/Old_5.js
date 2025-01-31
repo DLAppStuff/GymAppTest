@@ -48,9 +48,6 @@ const GymTrackerV3 = () => {
   // Keeps the "Add Set" weight input always in sync with the last used weight.
   const [inputWeights, setInputWeights] = useState({});
 
-  // Whether to show the monthly PR list at the bottom of the Overview tab
-  const [showMonthlyPRList, setShowMonthlyPRList] = useState(false);
-
   /**
    * ---------------------
    * 2. Load/Save to Local Storage
@@ -323,8 +320,8 @@ const GymTrackerV3 = () => {
     });
 
     // Count new PRs this month:
-    // We store each exercise's PR date as prs[exercise].date.
-    // If that PR date is within [monthStart, monthEnd], it counts.
+    // We store each exercise's PR date as prs[exercise].date,
+    // so we simply check if that PR date is within [monthStart, monthEnd].
     const newPRsThisMonth = Object.values(prs).filter((record) => {
       const prDate = new Date(record.date);
       return prDate >= monthStart && prDate <= monthEnd;
@@ -348,21 +345,6 @@ const GymTrackerV3 = () => {
     totalVolume,
     newPRsThisMonth
   } = getDashboardMetrics();
-
-  // For the collapsible monthly PR list: we also want to know exactly
-  // which exercises had PRs in the current month, including weight & date.
-  const monthStart = getStartOfCurrentMonth();
-  const monthEnd = getEndOfCurrentMonth();
-  const monthlyPRs = Object.entries(prs)
-    .filter(([exerciseName, record]) => {
-      const prDate = new Date(record.date);
-      return prDate >= monthStart && prDate <= monthEnd;
-    })
-    .map(([exerciseName, record]) => ({
-      exerciseName,
-      weight: record.weight,
-      date: record.date
-    }));
 
   /**
    * ---------------------
@@ -423,30 +405,6 @@ const GymTrackerV3 = () => {
               <div className="text-2xl font-bold">{totalVolume} kg</div>
             </div>
           </div>
-
-          {/* Collapsible List of This Month's PRs (if any) */}
-          {monthlyPRs.length > 0 && (
-            <div className="mt-8 border rounded p-4 bg-white">
-              <button
-                onClick={() => setShowMonthlyPRList(!showMonthlyPRList)}
-                className="bg-gray-200 px-4 py-2 rounded"
-              >
-                {showMonthlyPRList ? 'Hide PRs This Month' : 'Show PRs This Month'}
-              </button>
-              {showMonthlyPRList && (
-                <div className="mt-4 space-y-2">
-                  {monthlyPRs.map((pr, idx) => (
-                    <div key={idx} className="border-b pb-2">
-                      <strong>{pr.exerciseName}</strong>  
-                      <span className="ml-2">
-                        {pr.weight} kg on {pr.date}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
         </div>
       );
     }
@@ -470,36 +428,30 @@ const GymTrackerV3 = () => {
                     key={exercise}
                     className="mb-4 bg-gray-50 rounded-lg p-4"
                   >
-                    {/* 
-                      Updated layout for the exercise header: 
-                      - Name on top
-                      - PR trophy (if any) below
-                      - "Show Exercise" button below 
-                      to avoid any "flex" wrapping issues.
-                    */}
-                    <div className="mb-4">
-                      <h3 className="text-lg font-medium">{exercise}</h3>
-                      {prs[exercise] && (
-                        <div className="flex items-center gap-1 text-yellow-600 mt-1">
-                          <Trophy size={16} />
-                          <span className="text-sm">
-                            PR: {prs[exercise].weight} kg
-                          </span>
-                        </div>
-                      )}
-                      <div className="mt-2">
-                        <button
-                          onClick={() => toggleExerciseView(exercise)}
-                          className="flex items-center gap-1 bg-gray-300 px-3 py-1 rounded"
-                        >
-                          {isExerciseExpanded ? (
-                            <ChevronUp size={16} />
-                          ) : (
-                            <ChevronDown size={16} />
-                          )}
-                          {isExerciseExpanded ? 'Hide Exercise' : 'Show Exercise'}
-                        </button>
+                    {/* Exercise Header: Name, PR, Toggle Button */}
+                    <div className="flex justify-between items-center mb-4 flex-wrap">
+                      <div className="mb-2 sm:mb-0">
+                        <h3 className="text-lg font-medium">{exercise}</h3>
+                        {prs[exercise] && (
+                          <div className="flex items-center gap-1 text-yellow-600">
+                            <Trophy size={16} />
+                            <span className="text-sm">
+                              PR: {prs[exercise].weight} kg
+                            </span>
+                          </div>
+                        )}
                       </div>
+                      <button
+                        onClick={() => toggleExerciseView(exercise)}
+                        className="flex items-center gap-1 bg-gray-300 px-3 py-1 rounded"
+                      >
+                        {isExerciseExpanded ? (
+                          <ChevronUp size={16} />
+                        ) : (
+                          <ChevronDown size={16} />
+                        )}
+                        {isExerciseExpanded ? 'Hide Exercise' : 'Show Exercise'}
+                      </button>
                     </div>
 
                     {/* If exercise is expanded, show its details */}
