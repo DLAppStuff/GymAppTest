@@ -32,7 +32,7 @@ const GymTrackerV3 = () => {
   const [newExerciseName, setNewExerciseName] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Push');
 
-  // Tracks whether an exercise is "expanded" (true) or "hidden" (false)
+  // Toggles for each exercise (hide/show its details)
   const [showExercise, setShowExercise] = useState({});
 
   // Toggles for the graphs within an exercise
@@ -242,45 +242,7 @@ const GymTrackerV3 = () => {
 
   /**
    * ---------------------
-   * 4. Helper: Date Ranges
-   * ---------------------
-   *  - getMondayOfCurrentWeek / getSundayOfCurrentWeek
-   *  - getStartOfCurrentMonth / getEndOfCurrentMonth
-   */
-  const getMondayOfCurrentWeek = () => {
-    const today = new Date();
-    const day = today.getDay(); // Sunday = 0, Monday = 1, etc.
-    // We want the most recent Monday.
-    // If day=1 (Mon), diff=0. If day=0 (Sun), diff=6, etc.
-    const diff = day === 0 ? 6 : day - 1;
-    const monday = new Date(today);
-    monday.setDate(monday.getDate() - diff);
-    monday.setHours(0, 0, 0, 0);
-    return monday;
-  };
-
-  const getSundayOfCurrentWeek = () => {
-    const monday = getMondayOfCurrentWeek();
-    const sunday = new Date(monday);
-    sunday.setDate(sunday.getDate() + 6);
-    sunday.setHours(23, 59, 59, 999);
-    return sunday;
-  };
-
-  const getStartOfCurrentMonth = () => {
-    const now = new Date();
-    return new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-  };
-
-  const getEndOfCurrentMonth = () => {
-    const start = getStartOfCurrentMonth();
-    // day=0 => last day of the *previous* month. So for "this month," do month+1, day=0.
-    return new Date(start.getFullYear(), start.getMonth() + 1, 0, 23, 59, 59, 999);
-  };
-
-  /**
-   * ---------------------
-   * 5. Dashboard Calculations
+   * 4. Dashboard Calculations
    * ---------------------
    */
   const getDashboardMetrics = () => {
@@ -288,16 +250,17 @@ const GymTrackerV3 = () => {
     let totalSets = 0;
     let totalVolume = 0;
 
-    // Current week range (Mon-Sun)
-    const weekStart = getMondayOfCurrentWeek();
-    const weekEnd = getSundayOfCurrentWeek();
+    const today = new Date();
 
-    // Current month range
-    const monthStart = getStartOfCurrentMonth();
-    const monthEnd = getEndOfCurrentMonth();
+    // For last 7 days
+    const pastWeekDate = new Date();
+    pastWeekDate.setDate(today.getDate() - 7);
+    const datesInLastWeek = new Set();
 
-    const workoutDatesThisWeek = new Set();   // distinct dates in [weekStart, weekEnd]
-    const workoutDatesThisMonth = new Set();  // distinct dates in [monthStart, monthEnd]
+    // For last 30 days
+    const pastMonthDate = new Date();
+    pastMonthDate.setDate(today.getDate() - 30);
+    const datesInLastMonth = new Set();
 
     Object.keys(exercises).forEach((exerciseName) => {
       totalExercises += 1;
@@ -308,58 +271,41 @@ const GymTrackerV3 = () => {
         totalVolume += weight * reps;
 
         const setDate = new Date(date);
-        // If it's within the current Mon-Sun range:
-        if (setDate >= weekStart && setDate <= weekEnd) {
-          workoutDatesThisWeek.add(date);
+        // last 7 days
+        if (setDate >= pastWeekDate && setDate <= today) {
+          datesInLastWeek.add(date);
         }
-        // If it's within the current calendar month:
-        if (setDate >= monthStart && setDate <= monthEnd) {
-          workoutDatesThisMonth.add(date);
+        // last 30 days
+        if (setDate >= pastMonthDate && setDate <= today) {
+          datesInLastMonth.add(date);
         }
       });
     });
 
-    // Count new PRs this month:
-    // We store each exercise's PR date as prs[exercise].date,
-    // so we simply check if that PR date is within [monthStart, monthEnd].
-    const newPRsThisMonth = Object.values(prs).filter((record) => {
-      const prDate = new Date(record.date);
-      return prDate >= monthStart && prDate <= monthEnd;
-    }).length;
-
     return {
-      workoutsThisWeek: workoutDatesThisWeek.size,
-      workoutsThisMonth: workoutDatesThisMonth.size,
       totalExercises,
       totalSets,
       totalVolume,
-      newPRsThisMonth
+      lastWeekWorkouts: datesInLastWeek.size,
+      lastMonthWorkouts: datesInLastMonth.size
     };
   };
 
   const {
-    workoutsThisWeek,
-    workoutsThisMonth,
     totalExercises,
     totalSets,
     totalVolume,
-    newPRsThisMonth
+    lastWeekWorkouts,
+    lastMonthWorkouts
   } = getDashboardMetrics();
 
   /**
    * ---------------------
-   * 6. Hide by Default on Tab Change
+   * 5. Tabs & Rendering
    * ---------------------
    */
-  useEffect(() => {
-    setShowExercise({});
-  }, [currentTab]);
 
-  /**
-   * ---------------------
-   * 7. Tabs & Rendering
-   * ---------------------
-   */
+  // Define the tabs for your top navigation
   const TABS = [
     { id: 'Overview', label: 'Overview' },
     { id: 'Push', label: 'Push' },
@@ -367,51 +313,81 @@ const GymTrackerV3 = () => {
     { id: 'Legs', label: 'Legs' }
   ];
 
+  // This function renders content based on the currentTab
   const renderTabContent = () => {
     if (currentTab === 'Overview') {
+      // ---- OVERVIEW / DASHBOARD TAB ----
+
+      // Filter for new PRs in the past 30 days
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(new Date().getDate() - 30);
+
+      const recentPRs = Object.entries(prs).filter(([exerciseName, record]) => {
+        const prDate = new Date(record.date);
+        return prDate >= thirtyDaysAgo && prDate <= new Date();
+      });
+
       return (
         <div className="p-4">
           <h2 className="text-xl font-bold mb-4">Dashboard Overview</h2>
 
-          {/* 2-column, 3-row layout (6 tiles): */}
-          <div className="grid grid-cols-2 gap-4">
-            {/* Row 1: Workouts This Week, Workouts This Month */}
-            <div className="p-4 bg-white rounded shadow text-center">
-              <div className="text-sm text-gray-500">Workouts This Week</div>
-              <div className="text-2xl font-bold">{workoutsThisWeek}</div>
-            </div>
-            <div className="p-4 bg-white rounded shadow text-center">
-              <div className="text-sm text-gray-500">Workouts This Month</div>
-              <div className="text-2xl font-bold">{workoutsThisMonth}</div>
-            </div>
-
-            {/* Row 2: Total Exercises, Total Sets */}
+          {/* Metrics Tiles */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {/* 1. Total Exercises */}
             <div className="p-4 bg-white rounded shadow text-center">
               <div className="text-sm text-gray-500">Total Exercises</div>
               <div className="text-2xl font-bold">{totalExercises}</div>
             </div>
+            {/* 2. Total Sets */}
             <div className="p-4 bg-white rounded shadow text-center">
               <div className="text-sm text-gray-500">Total Sets</div>
               <div className="text-2xl font-bold">{totalSets}</div>
             </div>
-
-            {/* Row 3: New PRs This Month, Total Volume */}
-            <div className="p-4 bg-white rounded shadow text-center">
-              <div className="text-sm text-gray-500">New PRs This Month</div>
-              <div className="text-2xl font-bold">{newPRsThisMonth}</div>
-            </div>
+            {/* 3. Total Volume */}
             <div className="p-4 bg-white rounded shadow text-center">
               <div className="text-sm text-gray-500">Total Volume</div>
               <div className="text-2xl font-bold">{totalVolume} kg</div>
             </div>
+            {/* 4. Workouts (Last 7 Days) */}
+            <div className="p-4 bg-white rounded shadow text-center">
+              <div className="text-sm text-gray-500">Workouts (Last 7 Days)</div>
+              <div className="text-2xl font-bold">{lastWeekWorkouts}</div>
+            </div>
+          </div>
+
+          {/* Add tile for Workouts (Last 30 Days) */}
+          <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="p-4 bg-white rounded shadow text-center">
+              <div className="text-sm text-gray-500">Workouts (Last 30 Days)</div>
+              <div className="text-2xl font-bold">{lastMonthWorkouts}</div>
+            </div>
+          </div>
+
+          {/* Recent PRs Section */}
+          <div className="mt-8 p-4 bg-white rounded shadow">
+            <h3 className="text-lg font-semibold mb-2">Recent PRs (Last 30 Days)</h3>
+            {recentPRs.length === 0 ? (
+              <p className="text-sm text-gray-500">
+                No new PRs this month! Keep pushing!
+              </p>
+            ) : (
+              <ul className="list-disc pl-5">
+                {recentPRs.map(([exerciseName, record]) => (
+                  <li key={exerciseName}>
+                    <strong>{exerciseName}:</strong> {record.weight} kg on{' '}
+                    {record.date}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
       );
     }
 
-    // PUSH / PULL / LEGS TABS
+    // ---- PUSH / PULL / LEGS TABS ----
     if (['Push', 'Pull', 'Legs'].includes(currentTab)) {
-      const category = currentTab;
+      const category = currentTab; // "Push" | "Pull" | "Legs"
       return (
         <div className="p-4">
           <div key={category} className="mb-8 border rounded-lg p-4">
@@ -419,8 +395,11 @@ const GymTrackerV3 = () => {
             {Object.entries(exercises)
               .filter(([_, data]) => data.category === category)
               .map(([exercise, data]) => {
-                // Default to "false" if not defined (i.e. hidden by default)
-                const isExerciseExpanded = showExercise[exercise] ?? false;
+                const isExerciseExpanded =
+                  showExercise[exercise] !== undefined
+                    ? showExercise[exercise]
+                    : true;
+
                 const currentWeight = inputWeights[exercise] || '';
 
                 return (
