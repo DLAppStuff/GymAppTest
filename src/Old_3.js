@@ -32,21 +32,21 @@ const GymTrackerV3 = () => {
   const [newExerciseName, setNewExerciseName] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Push');
 
+  // Toggles for categories (hide/show all exercises)
+  const [showCategory, setShowCategory] = useState({
+    Push: true,
+    Pull: true,
+    Legs: true
+  });
+
   // Toggles for each exercise (hide/show its details)
   const [showExercise, setShowExercise] = useState({});
 
   // Toggles for the graphs within an exercise
   const [showGraphs, setShowGraphs] = useState({});
 
-  // Current active tab (Overview, Push, Pull, Legs)
-  const [currentTab, setCurrentTab] = useState('Overview');
-
   // Possible categories
   const categories = ['Push', 'Pull', 'Legs'];
-
-  // A map from exerciseName -> current weight input
-  // Keeps the "Add Set" weight input always in sync with the last used weight.
-  const [inputWeights, setInputWeights] = useState({});
 
   /**
    * ---------------------
@@ -108,11 +108,6 @@ const GymTrackerV3 = () => {
           dailyVolume: []
         }
       }));
-      // Initialize weight input for this exercise (optional)
-      setInputWeights((prev) => ({
-        ...prev,
-        [newExerciseName]: ''
-      }));
       setNewExerciseName('');
       setShowAddExerciseModal(false);
     }
@@ -124,10 +119,11 @@ const GymTrackerV3 = () => {
    * updates daily volume, and checks for a new PR if needed.
    */
   const addSet = (exercise) => {
-    const weight = parseFloat(inputWeights[exercise]);
+    const weightInput = document.getElementById(`${exercise}-weight`);
     const repsInput = document.getElementById(`${exercise}-reps`);
     const dateInput = document.getElementById(`${exercise}-date`);
 
+    const weight = parseFloat(weightInput.value);
     const reps = parseInt(repsInput.value);
     const dateValue = dateInput.value;
 
@@ -162,21 +158,17 @@ const GymTrackerV3 = () => {
           }));
         }
 
+        // Clear input fields
+        weightInput.value = '';
+        repsInput.value = '';
+        // Reset date to today (optional)
+        dateInput.value = new Date().toISOString().split('T')[0];
+
         return {
           ...prev,
           [exercise]: updatedExercise
         };
       });
-
-      // Keep the last used weight as the pre-filled value for next time
-      setInputWeights((prev) => ({
-        ...prev,
-        [exercise]: weight.toString()
-      }));
-
-      // Clear reps input (optional)
-      repsInput.value = '';
-      // dateInput stays as is (you might choose to reset it to today's date if preferred)
     }
   };
 
@@ -188,6 +180,17 @@ const GymTrackerV3 = () => {
     setShowGraphs((prev) => ({
       ...prev,
       [exercise]: !prev[exercise]
+    }));
+  };
+
+  /**
+   * toggleCategoryView
+   * Show/hide all exercises under a given category.
+   */
+  const toggleCategoryView = (cat) => {
+    setShowCategory((prev) => ({
+      ...prev,
+      [cat]: !prev[cat]
     }));
   };
 
@@ -240,159 +243,38 @@ const GymTrackerV3 = () => {
     }
   };
 
-  /**
-   * ---------------------
-   * 4. Dashboard Calculations
-   * ---------------------
-   */
-  const getDashboardMetrics = () => {
-    let totalExercises = 0;
-    let totalSets = 0;
-    let totalVolume = 0;
+  return (
+    <div className="p-4 max-w-6xl mx-auto">
+      {/* Header: Title + Backup/Sync Button */}
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">Enhanced Gym Tracker</h1>
+        <button
+          onClick={() => setShowBackupModal(true)}
+          className="flex items-center gap-2 bg-blue-500 text-white px-4 py-2 rounded"
+        >
+          <Save size={16} />
+          Backup/Sync
+        </button>
+      </div>
 
-    const today = new Date();
-
-    // For last 7 days
-    const pastWeekDate = new Date();
-    pastWeekDate.setDate(today.getDate() - 7);
-    const datesInLastWeek = new Set();
-
-    // For last 30 days
-    const pastMonthDate = new Date();
-    pastMonthDate.setDate(today.getDate() - 30);
-    const datesInLastMonth = new Set();
-
-    Object.keys(exercises).forEach((exerciseName) => {
-      totalExercises += 1;
-      const { sets } = exercises[exerciseName];
-
-      totalSets += sets.length;
-      sets.forEach(({ weight, reps, date }) => {
-        totalVolume += weight * reps;
-
-        const setDate = new Date(date);
-        // last 7 days
-        if (setDate >= pastWeekDate && setDate <= today) {
-          datesInLastWeek.add(date);
-        }
-        // last 30 days
-        if (setDate >= pastMonthDate && setDate <= today) {
-          datesInLastMonth.add(date);
-        }
-      });
-    });
-
-    return {
-      totalExercises,
-      totalSets,
-      totalVolume,
-      lastWeekWorkouts: datesInLastWeek.size,
-      lastMonthWorkouts: datesInLastMonth.size
-    };
-  };
-
-  const {
-    totalExercises,
-    totalSets,
-    totalVolume,
-    lastWeekWorkouts,
-    lastMonthWorkouts
-  } = getDashboardMetrics();
-
-  /**
-   * ---------------------
-   * 5. Tabs & Rendering
-   * ---------------------
-   */
-
-  // Define the tabs for your top navigation
-  const TABS = [
-    { id: 'Overview', label: 'Overview' },
-    { id: 'Push', label: 'Push' },
-    { id: 'Pull', label: 'Pull' },
-    { id: 'Legs', label: 'Legs' }
-  ];
-
-  // This function renders content based on the currentTab
-  const renderTabContent = () => {
-    if (currentTab === 'Overview') {
-      // ---- OVERVIEW / DASHBOARD TAB ----
-
-      // Filter for new PRs in the past 30 days
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(new Date().getDate() - 30);
-
-      const recentPRs = Object.entries(prs).filter(([exerciseName, record]) => {
-        const prDate = new Date(record.date);
-        return prDate >= thirtyDaysAgo && prDate <= new Date();
-      });
-
-      return (
-        <div className="p-4">
-          <h2 className="text-xl font-bold mb-4">Dashboard Overview</h2>
-
-          {/* Metrics Tiles */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {/* 1. Total Exercises */}
-            <div className="p-4 bg-white rounded shadow text-center">
-              <div className="text-sm text-gray-500">Total Exercises</div>
-              <div className="text-2xl font-bold">{totalExercises}</div>
-            </div>
-            {/* 2. Total Sets */}
-            <div className="p-4 bg-white rounded shadow text-center">
-              <div className="text-sm text-gray-500">Total Sets</div>
-              <div className="text-2xl font-bold">{totalSets}</div>
-            </div>
-            {/* 3. Total Volume */}
-            <div className="p-4 bg-white rounded shadow text-center">
-              <div className="text-sm text-gray-500">Total Volume</div>
-              <div className="text-2xl font-bold">{totalVolume} kg</div>
-            </div>
-            {/* 4. Workouts (Last 7 Days) */}
-            <div className="p-4 bg-white rounded shadow text-center">
-              <div className="text-sm text-gray-500">Workouts (Last 7 Days)</div>
-              <div className="text-2xl font-bold">{lastWeekWorkouts}</div>
-            </div>
+      {/* Render each category (Push, Pull, Legs) */}
+      {categories.map((category) => (
+        <div key={category} className="mb-8 border rounded-lg p-4">
+          {/* Category Header with Toggle */}
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold">{category}</h2>
+            <button
+              onClick={() => toggleCategoryView(category)}
+              className="flex items-center gap-1 bg-gray-200 px-3 py-1 rounded"
+            >
+              {showCategory[category] ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              {showCategory[category] ? 'Hide Category' : 'Show Category'}
+            </button>
           </div>
 
-          {/* Add tile for Workouts (Last 30 Days) */}
-          <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="p-4 bg-white rounded shadow text-center">
-              <div className="text-sm text-gray-500">Workouts (Last 30 Days)</div>
-              <div className="text-2xl font-bold">{lastMonthWorkouts}</div>
-            </div>
-          </div>
-
-          {/* Recent PRs Section */}
-          <div className="mt-8 p-4 bg-white rounded shadow">
-            <h3 className="text-lg font-semibold mb-2">Recent PRs (Last 30 Days)</h3>
-            {recentPRs.length === 0 ? (
-              <p className="text-sm text-gray-500">
-                No new PRs this month! Keep pushing!
-              </p>
-            ) : (
-              <ul className="list-disc pl-5">
-                {recentPRs.map(([exerciseName, record]) => (
-                  <li key={exerciseName}>
-                    <strong>{exerciseName}:</strong> {record.weight} kg on{' '}
-                    {record.date}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
-      );
-    }
-
-    // ---- PUSH / PULL / LEGS TABS ----
-    if (['Push', 'Pull', 'Legs'].includes(currentTab)) {
-      const category = currentTab; // "Push" | "Pull" | "Legs"
-      return (
-        <div className="p-4">
-          <div key={category} className="mb-8 border rounded-lg p-4">
-            <h2 className="text-xl font-semibold mb-4">{category} Exercises</h2>
-            {Object.entries(exercises)
+          {/* Only render exercises if the category is expanded */}
+          {showCategory[category] &&
+            Object.entries(exercises)
               .filter(([_, data]) => data.category === category)
               .map(([exercise, data]) => {
                 const isExerciseExpanded =
@@ -400,16 +282,17 @@ const GymTrackerV3 = () => {
                     ? showExercise[exercise]
                     : true;
 
-                const currentWeight = inputWeights[exercise] || '';
+                // Pre-fill weight with the most recent set's weight
+                const lastWeight =
+                  data.sets.length > 0
+                    ? data.sets[data.sets.length - 1].weight
+                    : '';
 
                 return (
-                  <div
-                    key={exercise}
-                    className="mb-4 bg-gray-50 rounded-lg p-4"
-                  >
+                  <div key={exercise} className="mb-4 bg-gray-50 rounded-lg p-4">
                     {/* Exercise Header: Name, PR, Toggle Button */}
-                    <div className="flex justify-between items-center mb-4 flex-wrap">
-                      <div className="mb-2 sm:mb-0">
+                    <div className="flex justify-between items-center mb-4">
+                      <div>
                         <h3 className="text-lg font-medium">{exercise}</h3>
                         {prs[exercise] && (
                           <div className="flex items-center gap-1 text-yellow-600">
@@ -424,11 +307,7 @@ const GymTrackerV3 = () => {
                         onClick={() => toggleExerciseView(exercise)}
                         className="flex items-center gap-1 bg-gray-300 px-3 py-1 rounded"
                       >
-                        {isExerciseExpanded ? (
-                          <ChevronUp size={16} />
-                        ) : (
-                          <ChevronDown size={16} />
-                        )}
+                        {isExerciseExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                         {isExerciseExpanded ? 'Hide Exercise' : 'Show Exercise'}
                       </button>
                     </div>
@@ -437,19 +316,13 @@ const GymTrackerV3 = () => {
                     {isExerciseExpanded && (
                       <>
                         {/* Inputs row: Weight, Reps, Date */}
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+                        <div className="grid grid-cols-3 gap-4 mb-4">
                           <input
                             id={`${exercise}-weight`}
                             type="number"
                             placeholder="Weight (kg)"
                             className="border rounded p-2"
-                            value={currentWeight}
-                            onChange={(e) =>
-                              setInputWeights((prev) => ({
-                                ...prev,
-                                [exercise]: e.target.value
-                              }))
-                            }
+                            defaultValue={lastWeight}
                           />
                           <input
                             id={`${exercise}-reps`}
@@ -460,12 +333,13 @@ const GymTrackerV3 = () => {
                           <input
                             id={`${exercise}-date`}
                             type="date"
+                            // Default to today's date
                             defaultValue={new Date().toISOString().split('T')[0]}
                             className="border rounded p-2"
                           />
                           <button
                             onClick={() => addSet(exercise)}
-                            className="bg-green-500 text-white p-2 rounded sm:col-span-3"
+                            className="col-span-3 bg-green-500 text-white p-2 rounded"
                           >
                             Add Set
                           </button>
@@ -474,17 +348,16 @@ const GymTrackerV3 = () => {
                         {/* Today's Sets */}
                         <div className="mb-4">
                           <h4 className="font-medium mb-2">Today's Sets:</h4>
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                          <div className="grid grid-cols-3 gap-2">
                             {data.sets
                               .filter(
                                 (set) =>
-                                  set.date ===
-                                  new Date().toISOString().split('T')[0]
+                                  set.date === new Date().toISOString().split('T')[0]
                               )
                               .map((set, idx) => (
                                 <div
                                   key={idx}
-                                  className="bg-white p-2 rounded border text-center"
+                                  className="bg-white p-2 rounded border"
                                 >
                                   {set.weight}kg x {set.reps}
                                 </div>
@@ -498,14 +371,8 @@ const GymTrackerV3 = () => {
                             onClick={() => toggleGraphs(exercise)}
                             className="flex items-center gap-1 bg-blue-500 text-white px-3 py-1 rounded"
                           >
-                            {showGraphs[exercise] ? (
-                              <ChevronUp size={16} />
-                            ) : (
-                              <ChevronDown size={16} />
-                            )}
-                            {showGraphs[exercise]
-                              ? 'Hide Progress'
-                              : 'Show Progress'}
+                            {showGraphs[exercise] ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                            {showGraphs[exercise] ? 'Hide Progress' : 'Show Progress'}
                           </button>
                         </div>
 
@@ -517,10 +384,7 @@ const GymTrackerV3 = () => {
                               <h4 className="font-medium mb-2">
                                 Max Weight Progress
                               </h4>
-                              <ResponsiveContainer
-                                width="100%"
-                                height="100%"
-                              >
+                              <ResponsiveContainer width="100%" height="100%">
                                 <LineChart data={prepareWeightData(data.sets)}>
                                   <CartesianGrid strokeDasharray="3 3" />
                                   <XAxis dataKey="date" />
@@ -538,13 +402,8 @@ const GymTrackerV3 = () => {
 
                             {/* Volume Progress */}
                             <div className="h-64">
-                              <h4 className="font-medium mb-2">
-                                Volume Progress
-                              </h4>
-                              <ResponsiveContainer
-                                width="100%"
-                                height="100%"
-                              >
+                              <h4 className="font-medium mb-2">Volume Progress</h4>
+                              <ResponsiveContainer width="100%" height="100%">
                                 <LineChart data={data.dailyVolume}>
                                   <CartesianGrid strokeDasharray="3 3" />
                                   <XAxis dataKey="date" />
@@ -565,49 +424,10 @@ const GymTrackerV3 = () => {
                   </div>
                 );
               })}
-          </div>
         </div>
-      );
-    }
+      ))}
 
-    return null;
-  };
-
-  return (
-    <div className="p-4 max-w-6xl mx-auto">
-      {/* Header: Title + Backup/Sync Button */}
-      <div className="flex justify-between items-center mb-4 flex-wrap">
-        <h1 className="text-2xl font-bold mb-2 sm:mb-0">Enhanced Gym Tracker</h1>
-        <button
-          onClick={() => setShowBackupModal(true)}
-          className="flex items-center gap-2 bg-blue-500 text-white px-4 py-2 rounded"
-        >
-          <Save size={16} />
-          Backup/Sync
-        </button>
-      </div>
-
-      {/* TAB NAVIGATION */}
-      <div className="flex gap-2 mb-4 flex-wrap">
-        {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setCurrentTab(tab.id)}
-            className={`px-4 py-2 rounded ${
-              currentTab === tab.id
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-200 text-gray-700'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* MAIN CONTENT: Depends on currentTab */}
-      {renderTabContent()}
-
-      {/* Floating "+" button to add a new exercise (visible on all tabs) */}
+      {/* Floating "+" button to add a new exercise */}
       <div className="fixed bottom-4 right-4">
         <button
           onClick={() => setShowAddExerciseModal(true)}
@@ -619,8 +439,8 @@ const GymTrackerV3 = () => {
 
       {/* Modal: Add New Exercise */}
       {showAddExerciseModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-2">
-          <div className="bg-white p-6 rounded-lg w-full max-w-sm">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+          <div className="bg-white p-6 rounded-lg w-96">
             <h3 className="text-lg font-semibold mb-4">Add New Exercise</h3>
             <div className="flex flex-col gap-4">
               <input
@@ -660,8 +480,8 @@ const GymTrackerV3 = () => {
 
       {/* Modal: Backup & Sync (Export/Import) */}
       {showBackupModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-2">
-          <div className="bg-white p-6 rounded-lg w-full max-w-sm">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+          <div className="bg-white p-6 rounded-lg w-96">
             <h3 className="text-lg font-semibold mb-4">Backup & Sync</h3>
             <div className="flex flex-col gap-4">
               <button
