@@ -75,7 +75,6 @@ const GymTrackerV3 = () => {
    * ---------------------
    */
   const [exercises, setExercises] = useState({});
-  // PRs now store an extra field "previousWeight" for surplus calculations.
   const [prs, setPRs] = useState({});
   const [showAddExerciseModal, setShowAddExerciseModal] = useState(false);
   const [showBackupModal, setShowBackupModal] = useState(false);
@@ -96,10 +95,11 @@ const GymTrackerV3 = () => {
   // Possible categories
   const categories = ['Push', 'Pull', 'Legs'];
 
-  // A map from exerciseName -> current weight input.
+  // A map from exerciseName -> current weight input
+  // Keeps the "Add Set" weight input always in sync with the last used weight.
   const [inputWeights, setInputWeights] = useState({});
 
-  // Whether to show the monthly PR list at the bottom of the Overview tab.
+  // Whether to show the monthly PR list at the bottom of the Overview tab
   const [showMonthlyPRList, setShowMonthlyPRList] = useState(false);
 
   /**
@@ -131,7 +131,8 @@ const GymTrackerV3 = () => {
 
   /**
    * prepareWeightData
-   * Given an array of sets, returns an array of objects representing the max weight for each date.
+   * Given an array of sets, returns an array of objects
+   * representing the max weight for each date, sorted by date.
    */
   const prepareWeightData = (sets) => {
     const dailyMaxes = sets.reduce((acc, set) => {
@@ -161,6 +162,7 @@ const GymTrackerV3 = () => {
           dailyVolume: []
         }
       }));
+      // Initialize weight input for this exercise (optional)
       setInputWeights((prev) => ({
         ...prev,
         [newExerciseName]: ''
@@ -207,15 +209,10 @@ const GymTrackerV3 = () => {
         }
 
         // Check for a new Personal Record (PR)
-        const currentPR = prs[exercise]?.weight || 0;
-        if (weight > currentPR) {
+        if (weight > (prs[exercise]?.weight || 0)) {
           setPRs((prevPRs) => ({
             ...prevPRs,
-            [exercise]: {
-              weight,
-              previousWeight: currentPR,
-              date: dateValue
-            }
+            [exercise]: { weight, date: dateValue }
           }));
         }
 
@@ -225,12 +222,13 @@ const GymTrackerV3 = () => {
         };
       });
 
-      // Keep the last used weight as the pre-filled value for next time.
+      // Keep the last used weight as the pre-filled value for next time
       setInputWeights((prev) => ({
         ...prev,
         [exercise]: weight.toString()
       }));
 
+      // Clear reps input (optional)
       repsInput.value = '';
     }
   };
@@ -242,13 +240,17 @@ const GymTrackerV3 = () => {
   const deleteSet = (exerciseName, setIndex) => {
     setExercises((prev) => {
       const updatedExercise = { ...prev[exerciseName] };
+      // Remove the set with the matching original index.
       updatedExercise.sets = updatedExercise.sets.filter((_, idx) => idx !== setIndex);
+      
+      // Recalculate dailyVolume for all dates.
       const volumes = {};
       updatedExercise.sets.forEach(s => {
         if (!volumes[s.date]) volumes[s.date] = 0;
         volumes[s.date] += s.weight * s.reps;
       });
       updatedExercise.dailyVolume = Object.entries(volumes).map(([date, volume]) => ({ date, volume }));
+      
       return {
         ...prev,
         [exerciseName]: updatedExercise
@@ -305,6 +307,7 @@ const GymTrackerV3 = () => {
     const dataToExport = JSON.stringify({ exercises, prs }, null, 2);
     const blob = new Blob([dataToExport], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
+
     const link = document.createElement('a');
     link.href = url;
     link.download = 'gym-progress-data.json';
@@ -367,16 +370,6 @@ const GymTrackerV3 = () => {
     return new Date(start.getFullYear(), start.getMonth() + 1, 0, 23, 59, 59, 999);
   };
 
-  const getStartOfPreviousMonth = () => {
-    const now = new Date();
-    return new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0);
-  };
-
-  const getEndOfPreviousMonth = () => {
-    const now = new Date();
-    return new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
-  };
-
   /**
    * ---------------------
    * 5. Dashboard Calculations
@@ -385,10 +378,11 @@ const GymTrackerV3 = () => {
   const getDashboardMetrics = () => {
     let totalExercises = 0;
     let totalSets = 0;
-    // Removed totalVolume
+    let totalVolume = 0;
 
     const weekStart = getMondayOfCurrentWeek();
     const weekEnd = getSundayOfCurrentWeek();
+
     const monthStart = getStartOfCurrentMonth();
     const monthEnd = getEndOfCurrentMonth();
 
@@ -398,8 +392,10 @@ const GymTrackerV3 = () => {
     Object.keys(exercises).forEach((exerciseName) => {
       totalExercises += 1;
       const { sets } = exercises[exerciseName];
+
       totalSets += sets.length;
       sets.forEach(({ weight, reps, date }) => {
+        totalVolume += weight * reps;
         const setDate = new Date(date);
         if (setDate >= weekStart && setDate <= weekEnd) {
           workoutDatesThisWeek.add(date);
@@ -415,19 +411,13 @@ const GymTrackerV3 = () => {
       return prDate >= monthStart && prDate <= monthEnd;
     }).length;
 
-    // Compute new PRs from the previous month.
-    const newPRsPastMonth = Object.values(prs).filter((record) => {
-      const prDate = new Date(record.date);
-      return prDate >= getStartOfPreviousMonth() && prDate <= getEndOfPreviousMonth();
-    }).length;
-
     return {
       workoutsThisWeek: workoutDatesThisWeek.size,
       workoutsThisMonth: workoutDatesThisMonth.size,
       totalExercises,
       totalSets,
-      newPRsThisMonth,
-      newPRsPastMonth
+      totalVolume,
+      newPRsThisMonth
     };
   };
 
@@ -436,11 +426,10 @@ const GymTrackerV3 = () => {
     workoutsThisMonth,
     totalExercises,
     totalSets,
-    newPRsThisMonth,
-    newPRsPastMonth
+    totalVolume,
+    newPRsThisMonth
   } = getDashboardMetrics();
 
-  // Adapted monthly PRs list for the current month.
   const monthStart = getStartOfCurrentMonth();
   const monthEnd = getEndOfCurrentMonth();
   const monthlyPRs = Object.entries(prs)
@@ -451,7 +440,7 @@ const GymTrackerV3 = () => {
     .map(([exerciseName, record]) => ({
       exerciseName,
       weight: record.weight,
-      surplus: record.previousWeight ? (record.weight - record.previousWeight) : 0
+      date: record.date
     }));
 
   /**
@@ -502,8 +491,8 @@ const GymTrackerV3 = () => {
               <div className="text-2xl font-bold">{newPRsThisMonth}</div>
             </div>
             <div className="p-4 bg-white rounded shadow text-center">
-              <div className="text-sm text-gray-500">New PRs Past Month</div>
-              <div className="text-2xl font-bold">{newPRsPastMonth}</div>
+              <div className="text-sm text-gray-500">Total Volume</div>
+              <div className="text-2xl font-bold">{totalVolume} kg</div>
             </div>
           </div>
           {monthlyPRs.length > 0 && (
@@ -519,9 +508,9 @@ const GymTrackerV3 = () => {
                   {monthlyPRs.map((pr, idx) => (
                     <div key={idx} className="border-b pb-2">
                       <strong>{pr.exerciseName}</strong>
-                      <div>
-                        {pr.weight} kg <span className="text-green-500">+{pr.surplus} kg</span>
-                      </div>
+                      <span className="ml-2">
+                        {pr.weight} kg on {pr.date}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -581,6 +570,7 @@ const GymTrackerV3 = () => {
                         {isExerciseExpanded ? 'Hide Exercise' : 'Show Exercise'}
                       </button>
                     </div>
+
                     {isExerciseExpanded && (
                       <>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
@@ -616,6 +606,7 @@ const GymTrackerV3 = () => {
                             Add Set
                           </button>
                         </div>
+
                         {/* Today's Sets with Long-Press Deletion */}
                         <div className="mb-4">
                           <h4 className="font-medium mb-2">Today's Sets:</h4>
@@ -631,6 +622,7 @@ const GymTrackerV3 = () => {
                             ))}
                           </div>
                         </div>
+
                         <div className="flex items-center gap-2 mb-4">
                           <button
                             onClick={() => toggleGraphs(exercise)}
@@ -646,10 +638,13 @@ const GymTrackerV3 = () => {
                               : 'Show Progress'}
                           </button>
                         </div>
+
                         {showGraphs[exercise] && (
                           <div>
                             <div className="h-64 mb-6">
-                              <h4 className="font-medium mb-2">Max Weight Progress</h4>
+                              <h4 className="font-medium mb-2">
+                                Max Weight Progress
+                              </h4>
                               <ResponsiveContainer width="100%" height="100%">
                                 <LineChart data={prepareWeightData(data.sets)}>
                                   <CartesianGrid strokeDasharray="3 3" />
@@ -666,7 +661,9 @@ const GymTrackerV3 = () => {
                               </ResponsiveContainer>
                             </div>
                             <div className="h-64">
-                              <h4 className="font-medium mb-2">Volume Progress</h4>
+                              <h4 className="font-medium mb-2">
+                                Volume Progress
+                              </h4>
                               <ResponsiveContainer width="100%" height="100%">
                                 <LineChart data={data.dailyVolume}>
                                   <CartesianGrid strokeDasharray="3 3" />
@@ -692,12 +689,12 @@ const GymTrackerV3 = () => {
         </div>
       );
     }
+
     return null;
   };
 
   return (
     <div className="p-4 max-w-6xl mx-auto">
-      {/* Header */}
       <div className="flex justify-between items-center mb-4 flex-wrap">
         <h1 className="text-2xl font-bold mb-2 sm:mb-0">Enhanced Gym Tracker</h1>
         <button
@@ -708,25 +705,25 @@ const GymTrackerV3 = () => {
           Backup/Sync
         </button>
       </div>
-      {/* Sticky Tab Navigation */}
-      <div className="sticky top-0 z-50 bg-white pt-2">
-        <div className="flex gap-2 mb-4 flex-wrap">
-          {TABS.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setCurrentTab(tab.id)}
-              className={`px-4 py-2 rounded ${
-                currentTab === tab.id
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-200 text-gray-700'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
+
+      <div className="flex gap-2 mb-4 flex-wrap">
+        {TABS.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setCurrentTab(tab.id)}
+            className={`px-4 py-2 rounded ${
+              currentTab === tab.id
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-200 text-gray-700'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
+
       {renderTabContent()}
+
       <div className="fixed bottom-4 right-4">
         <button
           onClick={() => setShowAddExerciseModal(true)}
@@ -735,6 +732,7 @@ const GymTrackerV3 = () => {
           +
         </button>
       </div>
+
       {showAddExerciseModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-2">
           <div className="bg-white p-6 rounded-lg w-full max-w-sm">
@@ -774,6 +772,7 @@ const GymTrackerV3 = () => {
           </div>
         </div>
       )}
+
       {showBackupModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-2">
           <div className="bg-white p-6 rounded-lg w-full max-w-sm">

@@ -17,57 +17,6 @@ import {
   ChevronUp
 } from 'lucide-react';
 
-/**
- * Custom hook to detect long-press events.
- * The callback is triggered after the specified delay (default 800ms).
- */
-const useLongPress = (callback = () => {}, ms = 800) => {
-  const [startLongPress, setStartLongPress] = useState(false);
-
-  useEffect(() => {
-    let timerId;
-    if (startLongPress) {
-      timerId = setTimeout(callback, ms);
-    } else {
-      clearTimeout(timerId);
-    }
-    return () => clearTimeout(timerId);
-  }, [startLongPress, callback, ms]);
-
-  const start = () => setStartLongPress(true);
-  const stop = () => setStartLongPress(false);
-
-  return {
-    onMouseDown: start,
-    onMouseUp: stop,
-    onMouseLeave: stop,
-    onTouchStart: start,
-    onTouchEnd: stop
-  };
-};
-
-/**
- * Component for rendering an individual set with long-press deletion.
- */
-const SetItem = ({ exerciseName, set, index, deleteSetCallback }) => {
-  const longPressEvent = useLongPress(() => {
-    const todayDate = new Date().toISOString().split('T')[0];
-    if (set.date === todayDate) {
-      if (window.confirm(`Delete set: ${set.weight}kg x ${set.reps}?`)) {
-        deleteSetCallback(exerciseName, index);
-      }
-    } else {
-      alert("You can only delete sets logged for today.");
-    }
-  }, 800);
-
-  return (
-    <div {...longPressEvent} className="bg-white p-2 rounded border text-center">
-      {set.weight}kg x {set.reps}
-    </div>
-  );
-};
-
 const GymTrackerV3 = () => {
   /**
    * ---------------------
@@ -75,7 +24,6 @@ const GymTrackerV3 = () => {
    * ---------------------
    */
   const [exercises, setExercises] = useState({});
-  // PRs now store an extra field "previousWeight" for surplus calculations.
   const [prs, setPRs] = useState({});
   const [showAddExerciseModal, setShowAddExerciseModal] = useState(false);
   const [showBackupModal, setShowBackupModal] = useState(false);
@@ -96,10 +44,11 @@ const GymTrackerV3 = () => {
   // Possible categories
   const categories = ['Push', 'Pull', 'Legs'];
 
-  // A map from exerciseName -> current weight input.
+  // A map from exerciseName -> current weight input
+  // Keeps the "Add Set" weight input always in sync with the last used weight.
   const [inputWeights, setInputWeights] = useState({});
 
-  // Whether to show the monthly PR list at the bottom of the Overview tab.
+  // Whether to show the monthly PR list at the bottom of the Overview tab
   const [showMonthlyPRList, setShowMonthlyPRList] = useState(false);
 
   /**
@@ -131,7 +80,8 @@ const GymTrackerV3 = () => {
 
   /**
    * prepareWeightData
-   * Given an array of sets, returns an array of objects representing the max weight for each date.
+   * Given an array of sets, returns an array of objects
+   * representing the max weight for each date, sorted by date.
    */
   const prepareWeightData = (sets) => {
     const dailyMaxes = sets.reduce((acc, set) => {
@@ -161,6 +111,7 @@ const GymTrackerV3 = () => {
           dailyVolume: []
         }
       }));
+      // Initialize weight input for this exercise (optional)
       setInputWeights((prev) => ({
         ...prev,
         [newExerciseName]: ''
@@ -207,15 +158,10 @@ const GymTrackerV3 = () => {
         }
 
         // Check for a new Personal Record (PR)
-        const currentPR = prs[exercise]?.weight || 0;
-        if (weight > currentPR) {
+        if (weight > (prs[exercise]?.weight || 0)) {
           setPRs((prevPRs) => ({
             ...prevPRs,
-            [exercise]: {
-              weight,
-              previousWeight: currentPR,
-              date: dateValue
-            }
+            [exercise]: { weight, date: dateValue }
           }));
         }
 
@@ -225,35 +171,16 @@ const GymTrackerV3 = () => {
         };
       });
 
-      // Keep the last used weight as the pre-filled value for next time.
+      // Keep the last used weight as the pre-filled value for next time
       setInputWeights((prev) => ({
         ...prev,
         [exercise]: weight.toString()
       }));
 
+      // Clear reps input (optional)
       repsInput.value = '';
+      // dateInput stays as is (you might choose to reset it to today's date if preferred)
     }
-  };
-
-  /**
-   * deleteSet
-   * Deletes a set at the specified index from the exercise and recalculates daily volume.
-   */
-  const deleteSet = (exerciseName, setIndex) => {
-    setExercises((prev) => {
-      const updatedExercise = { ...prev[exerciseName] };
-      updatedExercise.sets = updatedExercise.sets.filter((_, idx) => idx !== setIndex);
-      const volumes = {};
-      updatedExercise.sets.forEach(s => {
-        if (!volumes[s.date]) volumes[s.date] = 0;
-        volumes[s.date] += s.weight * s.reps;
-      });
-      updatedExercise.dailyVolume = Object.entries(volumes).map(([date, volume]) => ({ date, volume }));
-      return {
-        ...prev,
-        [exerciseName]: updatedExercise
-      };
-    });
   };
 
   /**
@@ -279,25 +206,6 @@ const GymTrackerV3 = () => {
   };
 
   /**
-   * handleDeleteExercise
-   * Deletes an entire exercise (and its PR) after a confirmation prompt.
-   */
-  const handleDeleteExercise = (exerciseName) => {
-    if (window.confirm(`Are you sure you want to delete exercise "${exerciseName}"?`)) {
-      setExercises((prev) => {
-        const newExercises = { ...prev };
-        delete newExercises[exerciseName];
-        return newExercises;
-      });
-      setPRs((prev) => {
-        const newPRs = { ...prev };
-        delete newPRs[exerciseName];
-        return newPRs;
-      });
-    }
-  };
-
-  /**
    * handleExport
    * Exports the current data (exercises + prs) to a .json file.
    */
@@ -305,6 +213,7 @@ const GymTrackerV3 = () => {
     const dataToExport = JSON.stringify({ exercises, prs }, null, 2);
     const blob = new Blob([dataToExport], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
+
     const link = document.createElement('a');
     link.href = url;
     link.download = 'gym-progress-data.json';
@@ -338,10 +247,14 @@ const GymTrackerV3 = () => {
    * ---------------------
    * 4. Helper: Date Ranges
    * ---------------------
+   *  - getMondayOfCurrentWeek / getSundayOfCurrentWeek
+   *  - getStartOfCurrentMonth / getEndOfCurrentMonth
    */
   const getMondayOfCurrentWeek = () => {
     const today = new Date();
-    const day = today.getDay();
+    const day = today.getDay(); // Sunday = 0, Monday = 1, etc.
+    // We want the most recent Monday.
+    // If day=1 (Mon), diff=0. If day=0 (Sun), diff=6, etc.
     const diff = day === 0 ? 6 : day - 1;
     const monday = new Date(today);
     monday.setDate(monday.getDate() - diff);
@@ -364,17 +277,8 @@ const GymTrackerV3 = () => {
 
   const getEndOfCurrentMonth = () => {
     const start = getStartOfCurrentMonth();
+    // day=0 => last day of the *previous* month. So for "this month," do month+1, day=0.
     return new Date(start.getFullYear(), start.getMonth() + 1, 0, 23, 59, 59, 999);
-  };
-
-  const getStartOfPreviousMonth = () => {
-    const now = new Date();
-    return new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0);
-  };
-
-  const getEndOfPreviousMonth = () => {
-    const now = new Date();
-    return new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
   };
 
   /**
@@ -385,40 +289,45 @@ const GymTrackerV3 = () => {
   const getDashboardMetrics = () => {
     let totalExercises = 0;
     let totalSets = 0;
-    // Removed totalVolume
+    let totalVolume = 0;
 
+    // Current week range (Mon-Sun)
     const weekStart = getMondayOfCurrentWeek();
     const weekEnd = getSundayOfCurrentWeek();
+
+    // Current month range
     const monthStart = getStartOfCurrentMonth();
     const monthEnd = getEndOfCurrentMonth();
 
-    const workoutDatesThisWeek = new Set();
-    const workoutDatesThisMonth = new Set();
+    const workoutDatesThisWeek = new Set();   // distinct dates in [weekStart, weekEnd]
+    const workoutDatesThisMonth = new Set();  // distinct dates in [monthStart, monthEnd]
 
     Object.keys(exercises).forEach((exerciseName) => {
       totalExercises += 1;
       const { sets } = exercises[exerciseName];
+
       totalSets += sets.length;
       sets.forEach(({ weight, reps, date }) => {
+        totalVolume += weight * reps;
+
         const setDate = new Date(date);
+        // If it's within the current Mon-Sun range:
         if (setDate >= weekStart && setDate <= weekEnd) {
           workoutDatesThisWeek.add(date);
         }
+        // If it's within the current calendar month:
         if (setDate >= monthStart && setDate <= monthEnd) {
           workoutDatesThisMonth.add(date);
         }
       });
     });
 
+    // Count new PRs this month:
+    // We store each exercise's PR date as prs[exercise].date.
+    // If that PR date is within [monthStart, monthEnd], it counts.
     const newPRsThisMonth = Object.values(prs).filter((record) => {
       const prDate = new Date(record.date);
       return prDate >= monthStart && prDate <= monthEnd;
-    }).length;
-
-    // Compute new PRs from the previous month.
-    const newPRsPastMonth = Object.values(prs).filter((record) => {
-      const prDate = new Date(record.date);
-      return prDate >= getStartOfPreviousMonth() && prDate <= getEndOfPreviousMonth();
     }).length;
 
     return {
@@ -426,8 +335,8 @@ const GymTrackerV3 = () => {
       workoutsThisMonth: workoutDatesThisMonth.size,
       totalExercises,
       totalSets,
-      newPRsThisMonth,
-      newPRsPastMonth
+      totalVolume,
+      newPRsThisMonth
     };
   };
 
@@ -436,11 +345,12 @@ const GymTrackerV3 = () => {
     workoutsThisMonth,
     totalExercises,
     totalSets,
-    newPRsThisMonth,
-    newPRsPastMonth
+    totalVolume,
+    newPRsThisMonth
   } = getDashboardMetrics();
 
-  // Adapted monthly PRs list for the current month.
+  // For the collapsible monthly PR list: we also want to know exactly
+  // which exercises had PRs in the current month, including weight & date.
   const monthStart = getStartOfCurrentMonth();
   const monthEnd = getEndOfCurrentMonth();
   const monthlyPRs = Object.entries(prs)
@@ -451,7 +361,7 @@ const GymTrackerV3 = () => {
     .map(([exerciseName, record]) => ({
       exerciseName,
       weight: record.weight,
-      surplus: record.previousWeight ? (record.weight - record.previousWeight) : 0
+      date: record.date
     }));
 
   /**
@@ -480,7 +390,10 @@ const GymTrackerV3 = () => {
       return (
         <div className="p-4">
           <h2 className="text-xl font-bold mb-4">Dashboard Overview</h2>
+
+          {/* 2-column, 3-row layout (6 tiles): */}
           <div className="grid grid-cols-2 gap-4">
+            {/* Row 1: Workouts This Week, Workouts This Month */}
             <div className="p-4 bg-white rounded shadow text-center">
               <div className="text-sm text-gray-500">Workouts This Week</div>
               <div className="text-2xl font-bold">{workoutsThisWeek}</div>
@@ -489,6 +402,8 @@ const GymTrackerV3 = () => {
               <div className="text-sm text-gray-500">Workouts This Month</div>
               <div className="text-2xl font-bold">{workoutsThisMonth}</div>
             </div>
+
+            {/* Row 2: Total Exercises, Total Sets */}
             <div className="p-4 bg-white rounded shadow text-center">
               <div className="text-sm text-gray-500">Total Exercises</div>
               <div className="text-2xl font-bold">{totalExercises}</div>
@@ -497,15 +412,19 @@ const GymTrackerV3 = () => {
               <div className="text-sm text-gray-500">Total Sets</div>
               <div className="text-2xl font-bold">{totalSets}</div>
             </div>
+
+            {/* Row 3: New PRs This Month, Total Volume */}
             <div className="p-4 bg-white rounded shadow text-center">
               <div className="text-sm text-gray-500">New PRs This Month</div>
               <div className="text-2xl font-bold">{newPRsThisMonth}</div>
             </div>
             <div className="p-4 bg-white rounded shadow text-center">
-              <div className="text-sm text-gray-500">New PRs Past Month</div>
-              <div className="text-2xl font-bold">{newPRsPastMonth}</div>
+              <div className="text-sm text-gray-500">Total Volume</div>
+              <div className="text-2xl font-bold">{totalVolume} kg</div>
             </div>
           </div>
+
+          {/* Collapsible List of This Month's PRs (if any) */}
           {monthlyPRs.length > 0 && (
             <div className="mt-8 border rounded p-4 bg-white">
               <button
@@ -518,10 +437,10 @@ const GymTrackerV3 = () => {
                 <div className="mt-4 space-y-2">
                   {monthlyPRs.map((pr, idx) => (
                     <div key={idx} className="border-b pb-2">
-                      <strong>{pr.exerciseName}</strong>
-                      <div>
-                        {pr.weight} kg <span className="text-green-500">+{pr.surplus} kg</span>
-                      </div>
+                      <strong>{pr.exerciseName}</strong>  
+                      <span className="ml-2">
+                        {pr.weight} kg on {pr.date}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -532,6 +451,7 @@ const GymTrackerV3 = () => {
       );
     }
 
+    // PUSH / PULL / LEGS TABS
     if (['Push', 'Pull', 'Legs'].includes(currentTab)) {
       const category = currentTab;
       return (
@@ -541,48 +461,51 @@ const GymTrackerV3 = () => {
             {Object.entries(exercises)
               .filter(([_, data]) => data.category === category)
               .map(([exercise, data]) => {
+                // Default to "false" if not defined (i.e. hidden by default)
                 const isExerciseExpanded = showExercise[exercise] ?? false;
                 const currentWeight = inputWeights[exercise] || '';
-                const todayDate = new Date().toISOString().split('T')[0];
-                const todaysSets = data.sets
-                  .map((set, idx) => ({ ...set, idx }))
-                  .filter((set) => set.date === todayDate);
 
                 return (
-                  <div key={exercise} className="mb-4 bg-gray-50 rounded-lg p-4 relative">
-                    {/* Header: Exercise name and deletion button */}
-                    <div className="mb-4 flex justify-between items-center">
+                  <div
+                    key={exercise}
+                    className="mb-4 bg-gray-50 rounded-lg p-4"
+                  >
+                    {/* 
+                      Updated layout for the exercise header: 
+                      - Name on top
+                      - PR trophy (if any) below
+                      - "Show Exercise" button below 
+                      to avoid any "flex" wrapping issues.
+                    */}
+                    <div className="mb-4">
                       <h3 className="text-lg font-medium">{exercise}</h3>
-                      <button
-                        onClick={() => handleDeleteExercise(exercise)}
-                        className="text-gray-400 hover:text-gray-600 text-lg"
-                      >
-                        X
-                      </button>
-                    </div>
-                    {prs[exercise] && (
-                      <div className="flex items-center gap-1 text-yellow-600 mt-1">
-                        <Trophy size={16} />
-                        <span className="text-sm">
-                          PR: {prs[exercise].weight} kg
-                        </span>
+                      {prs[exercise] && (
+                        <div className="flex items-center gap-1 text-yellow-600 mt-1">
+                          <Trophy size={16} />
+                          <span className="text-sm">
+                            PR: {prs[exercise].weight} kg
+                          </span>
+                        </div>
+                      )}
+                      <div className="mt-2">
+                        <button
+                          onClick={() => toggleExerciseView(exercise)}
+                          className="flex items-center gap-1 bg-gray-300 px-3 py-1 rounded"
+                        >
+                          {isExerciseExpanded ? (
+                            <ChevronUp size={16} />
+                          ) : (
+                            <ChevronDown size={16} />
+                          )}
+                          {isExerciseExpanded ? 'Hide Exercise' : 'Show Exercise'}
+                        </button>
                       </div>
-                    )}
-                    <div className="mt-2">
-                      <button
-                        onClick={() => toggleExerciseView(exercise)}
-                        className="flex items-center gap-1 bg-gray-300 px-3 py-1 rounded"
-                      >
-                        {isExerciseExpanded ? (
-                          <ChevronUp size={16} />
-                        ) : (
-                          <ChevronDown size={16} />
-                        )}
-                        {isExerciseExpanded ? 'Hide Exercise' : 'Show Exercise'}
-                      </button>
                     </div>
+
+                    {/* If exercise is expanded, show its details */}
                     {isExerciseExpanded && (
                       <>
+                        {/* Inputs row: Weight, Reps, Date */}
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
                           <input
                             id={`${exercise}-weight`}
@@ -616,21 +539,29 @@ const GymTrackerV3 = () => {
                             Add Set
                           </button>
                         </div>
-                        {/* Today's Sets with Long-Press Deletion */}
+
+                        {/* Today's Sets */}
                         <div className="mb-4">
                           <h4 className="font-medium mb-2">Today's Sets:</h4>
                           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                            {todaysSets.map((set) => (
-                              <SetItem
-                                key={set.idx}
-                                exerciseName={exercise}
-                                set={set}
-                                index={set.idx}
-                                deleteSetCallback={deleteSet}
-                              />
-                            ))}
+                            {data.sets
+                              .filter(
+                                (set) =>
+                                  set.date ===
+                                  new Date().toISOString().split('T')[0]
+                              )
+                              .map((set, idx) => (
+                                <div
+                                  key={idx}
+                                  className="bg-white p-2 rounded border text-center"
+                                >
+                                  {set.weight}kg x {set.reps}
+                                </div>
+                              ))}
                           </div>
                         </div>
+
+                        {/* Button to show/hide graphs */}
                         <div className="flex items-center gap-2 mb-4">
                           <button
                             onClick={() => toggleGraphs(exercise)}
@@ -646,11 +577,19 @@ const GymTrackerV3 = () => {
                               : 'Show Progress'}
                           </button>
                         </div>
+
+                        {/* Graphs (stacked) */}
                         {showGraphs[exercise] && (
                           <div>
+                            {/* Max Weight Progress */}
                             <div className="h-64 mb-6">
-                              <h4 className="font-medium mb-2">Max Weight Progress</h4>
-                              <ResponsiveContainer width="100%" height="100%">
+                              <h4 className="font-medium mb-2">
+                                Max Weight Progress
+                              </h4>
+                              <ResponsiveContainer
+                                width="100%"
+                                height="100%"
+                              >
                                 <LineChart data={prepareWeightData(data.sets)}>
                                   <CartesianGrid strokeDasharray="3 3" />
                                   <XAxis dataKey="date" />
@@ -665,9 +604,16 @@ const GymTrackerV3 = () => {
                                 </LineChart>
                               </ResponsiveContainer>
                             </div>
+
+                            {/* Volume Progress */}
                             <div className="h-64">
-                              <h4 className="font-medium mb-2">Volume Progress</h4>
-                              <ResponsiveContainer width="100%" height="100%">
+                              <h4 className="font-medium mb-2">
+                                Volume Progress
+                              </h4>
+                              <ResponsiveContainer
+                                width="100%"
+                                height="100%"
+                              >
                                 <LineChart data={data.dailyVolume}>
                                   <CartesianGrid strokeDasharray="3 3" />
                                   <XAxis dataKey="date" />
@@ -692,12 +638,13 @@ const GymTrackerV3 = () => {
         </div>
       );
     }
+
     return null;
   };
 
   return (
     <div className="p-4 max-w-6xl mx-auto">
-      {/* Header */}
+      {/* Header: Title + Backup/Sync Button */}
       <div className="flex justify-between items-center mb-4 flex-wrap">
         <h1 className="text-2xl font-bold mb-2 sm:mb-0">Enhanced Gym Tracker</h1>
         <button
@@ -708,25 +655,28 @@ const GymTrackerV3 = () => {
           Backup/Sync
         </button>
       </div>
-      {/* Sticky Tab Navigation */}
-      <div className="sticky top-0 z-50 bg-white pt-2">
-        <div className="flex gap-2 mb-4 flex-wrap">
-          {TABS.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setCurrentTab(tab.id)}
-              className={`px-4 py-2 rounded ${
-                currentTab === tab.id
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-200 text-gray-700'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
+
+      {/* TAB NAVIGATION */}
+      <div className="flex gap-2 mb-4 flex-wrap">
+        {TABS.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setCurrentTab(tab.id)}
+            className={`px-4 py-2 rounded ${
+              currentTab === tab.id
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-200 text-gray-700'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
+
+      {/* MAIN CONTENT: Depends on currentTab */}
       {renderTabContent()}
+
+      {/* Floating "+" button to add a new exercise (visible on all tabs) */}
       <div className="fixed bottom-4 right-4">
         <button
           onClick={() => setShowAddExerciseModal(true)}
@@ -735,6 +685,8 @@ const GymTrackerV3 = () => {
           +
         </button>
       </div>
+
+      {/* Modal: Add New Exercise */}
       {showAddExerciseModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-2">
           <div className="bg-white p-6 rounded-lg w-full max-w-sm">
@@ -774,6 +726,8 @@ const GymTrackerV3 = () => {
           </div>
         </div>
       )}
+
+      {/* Modal: Backup & Sync (Export/Import) */}
       {showBackupModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-2">
           <div className="bg-white p-6 rounded-lg w-full max-w-sm">
