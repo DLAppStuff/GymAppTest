@@ -782,9 +782,9 @@ const GymTrackerV3 = () => {
               <CardContent>
                 <div className="space-y-6">
                   {/* Input Section */}
-                  <div className="flex gap-4">
+                  <div className="flex items-end gap-4">
                     <div className="flex-1">
-                      <Label htmlFor="weight">Weight (kg)</Label>
+                      <Label htmlFor="weight">Weight</Label>
                       <Input
                         id="weight"
                         type="number"
@@ -805,15 +805,13 @@ const GymTrackerV3 = () => {
                         className={`${isDarkMode ? 'bg-zinc-800 border-zinc-700' : 'bg-zinc-50 border-zinc-200'}`}
                       />
                     </div>
-                    <div className="flex items-end">
-                      <Button 
-                        onClick={handleAddWeight}
-                        className={isDarkMode ? 'bg-zinc-700 hover:bg-zinc-600' : ''}
-                        disabled={!newWeight || !weightDate}
-                      >
-                        Add Weight
-                      </Button>
-                    </div>
+                    <Button 
+                      onClick={handleAddWeight}
+                      className={isDarkMode ? 'bg-zinc-700 hover:bg-zinc-600' : ''}
+                      disabled={!newWeight || !weightDate}
+                    >
+                      Add Weight
+                    </Button>
                   </div>
 
                   {/* Metrics Section */}
@@ -932,62 +930,6 @@ const GymTrackerV3 = () => {
         ))}
       </Tabs>
 
-      <Button 
-        variant="default" 
-        size="icon" 
-        className="fixed bottom-6 right-6 w-14 h-14 rounded-full shadow-lg bg-zinc-800 hover:bg-zinc-700 p-2"
-        onClick={() => setShowAddExerciseModal(true)}
-      >
-        <Plus size={40} className={isDarkMode ? 'text-white' : ''} />
-      </Button>
-
-      {/* Stopwatch Drawer */}
-      <Sheet>
-        <SheetTrigger asChild>
-          <Button
-            variant="default"
-            size="icon"
-            className={`fixed bottom-24 left-6 w-14 h-14 rounded-full shadow-lg p-2 ${
-              isDarkMode
-                ? 'bg-zinc-700 hover:bg-zinc-600'
-                : 'bg-zinc-800 hover:bg-zinc-700'
-            }`}
-            onClick={handleStopwatchOpen}
-          >
-            <Timer size={40} className={isDarkMode ? 'text-white' : ''} />
-          </Button>
-        </SheetTrigger>
-        <SheetContent side="left" className={isDarkMode ? 'bg-zinc-800 border-zinc-700' : 'bg-white'}>
-          <SheetHeader>
-            <SheetTitle className={isDarkMode ? 'text-zinc-100' : ''}>Rest Timer</SheetTitle>
-          </SheetHeader>
-          <div className="flex flex-col items-center justify-center h-full">
-            <div className={`text-6xl font-bold mb-4 ${
-              stopwatchTime >= 45 ? 'text-green-500' : isDarkMode ? 'text-zinc-100' : 'text-zinc-900'
-            }`}>
-              {formatTime(stopwatchTime)}
-            </div>
-            <p className="text-sm text-muted-foreground">
-              {stopwatchTime >= 45 ? 'Rest complete!' : 'Rest in progress...'}
-            </p>
-          </div>
-        </SheetContent>
-      </Sheet>
-
-      {/* Dark Mode Toggle Button */}
-      <Button 
-        variant="default" 
-        size="icon" 
-        className={`fixed bottom-6 left-6 w-14 h-14 rounded-full shadow-lg p-2 ${
-          isDarkMode 
-            ? 'bg-zinc-700 hover:bg-zinc-600' 
-            : 'bg-zinc-800 hover:bg-zinc-700'
-        }`}
-        onClick={() => setIsDarkMode(!isDarkMode)}
-      >
-        {isDarkMode ? <Sun size={40} className="text-white" /> : <Moon size={40} className="text-white" />}
-      </Button>
-
       {showAddExerciseModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
           <Card className={isDarkMode ? 'w-full max-w-md bg-zinc-800 border-zinc-700' : 'w-full max-w-md'}>
@@ -1039,6 +981,67 @@ const GymTrackerV3 = () => {
           </Card>
         </div>
       )}
+
+      {/* Replace the floating buttons with a fixed bottom bar */}
+      <div className="fixed bottom-4 left-0 right-0 flex justify-center items-center gap-4 z-50">
+        <Button 
+          variant="default" 
+          size="icon" 
+          className={`w-10 h-10 rounded-full shadow-lg ${
+            isDarkMode 
+              ? 'bg-zinc-700 hover:bg-zinc-600' 
+              : 'bg-zinc-800 hover:bg-zinc-700'
+          }`}
+          onClick={() => setIsDarkMode(!isDarkMode)}
+        >
+          {isDarkMode ? <Sun size={20} className="text-white" /> : <Moon size={20} className="text-white" />}
+        </Button>
+
+        <Sheet>
+          <SheetTrigger asChild>
+            <Button
+              variant="default"
+              size="icon"
+              className={`w-10 h-10 rounded-full shadow-lg ${
+                isDarkMode
+                  ? 'bg-zinc-700 hover:bg-zinc-600'
+                  : 'bg-zinc-800 hover:bg-zinc-700'
+              }`}
+              onClick={handleStopwatchOpen}
+            >
+              <Timer size={20} className={isDarkMode ? 'text-white' : ''} />
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="left" className={isDarkMode ? 'bg-zinc-800 border-zinc-700' : 'bg-white'}>
+            <SheetHeader>
+              <SheetTitle className={isDarkMode ? 'text-zinc-100' : ''}>Rest Timer</SheetTitle>
+            </SheetHeader>
+            <div className="flex flex-col items-center justify-center h-full">
+              <div className={`text-6xl font-bold mb-4 ${
+                stopwatchTime >= 45 ? 'text-green-500' : isDarkMode ? 'text-zinc-100' : 'text-zinc-900'
+              }`}>
+                {formatTime(stopwatchTime)}
+              </div>
+              <p className="text-sm text-muted-foreground">
+                {stopwatchTime >= 45 ? 'Rest complete!' : 'Rest in progress...'}
+              </p>
+            </div>
+          </SheetContent>
+        </Sheet>
+
+        <Button 
+          variant="default" 
+          size="icon" 
+          className={`w-10 h-10 rounded-full shadow-lg ${
+            isDarkMode 
+              ? 'bg-zinc-700 hover:bg-zinc-600' 
+              : 'bg-zinc-800 hover:bg-zinc-700'
+          }`}
+          onClick={() => setShowAddExerciseModal(true)}
+        >
+          <Plus size={20} className={isDarkMode ? 'text-white' : ''} />
+        </Button>
+      </div>
     </div>
   );
 };

@@ -16,10 +16,10 @@ const WorkoutHeatmap = ({ workoutDates, startDate, endDate, isDarkMode, isCurren
   today.setHours(0, 0, 0, 0);
 
   const firstDayOfMonth = getFirstDayOfMonth(startDate);
+  const daysInMonth = getDaysInMonth(startDate);
 
   const generateDays = () => {
     const days = [];
-    const totalDays = getDaysInMonth(startDate);
     const workoutDatesSet = new Set(workoutDates);
 
     // Add empty cells for proper alignment
@@ -32,37 +32,41 @@ const WorkoutHeatmap = ({ workoutDates, startDate, endDate, isDarkMode, isCurren
       );
     }
 
-    for (let i = 1; i <= totalDays; i++) {
+    // Always generate 31 days
+    for (let i = 1; i <= 31; i++) {
+      const isValidDate = i <= daysInMonth;
       const currentDate = new Date(startDate.getFullYear(), startDate.getMonth(), i);
       const dateString = currentDate.toISOString().split('T')[0];
       const isWorkoutDay = workoutDatesSet.has(dateString);
-      // Only show as workout day if it's in the past or today
-      const shouldShowAsWorkout = isWorkoutDay && currentDate <= today;
+      // Only show as workout day if it's in the past or today and is a valid date for this month
+      const shouldShowAsWorkout = isWorkoutDay && currentDate <= today && isValidDate;
 
       days.push(
         <div
           key={i}
           className={`aspect-square flex items-center justify-center rounded-lg transition-all duration-200 hover:scale-105 ${
             shouldShowAsWorkout
-              ? 'bg-[#1e4d5c] hover:bg-[#1a4552] shadow-sm'
+              ? 'bg-[#2a7d93] hover:bg-[#246d81] shadow-sm'
               : isDarkMode
               ? 'bg-zinc-800 hover:bg-zinc-700'
               : 'bg-zinc-100 hover:bg-zinc-200'
           } ${
-            currentDate.toDateString() === today.toDateString()
+            currentDate.toDateString() === today.toDateString() && isValidDate
               ? 'ring-2 ring-blue-400'
               : ''
           }`}
         >
-          <span className={`text-xs ${
-            shouldShowAsWorkout
-              ? 'text-white font-medium'
-              : isDarkMode
-              ? 'text-zinc-400'
-              : 'text-zinc-600'
-          }`}>
-            {i}
-          </span>
+          {isValidDate && (
+            <span className={`text-xs ${
+              shouldShowAsWorkout
+                ? 'text-white font-medium'
+                : isDarkMode
+                ? 'text-zinc-400'
+                : 'text-zinc-600'
+            }`}>
+              {i}
+            </span>
+          )}
         </div>
       );
     }
@@ -70,14 +74,14 @@ const WorkoutHeatmap = ({ workoutDates, startDate, endDate, isDarkMode, isCurren
   };
 
   return (
-    <Card className={`${isDarkMode ? 'bg-zinc-800/50 border-zinc-700' : ''} h-full backdrop-blur-sm`}>
-      <CardHeader className="pb-2">
+    <Card className={`${isDarkMode ? 'bg-zinc-800/50 border-zinc-700' : ''} backdrop-blur-sm`}>
+      <CardHeader className="pb-0">
         <CardTitle className={`text-base ${isDarkMode ? 'text-zinc-100' : ''}`}>
           {startDate.toLocaleString('default', { month: 'long', year: 'numeric' })}
         </CardTitle>
       </CardHeader>
-      <CardContent className="pt-0">
-        <div className="grid grid-cols-7 gap-1.5 text-xs">
+      <CardContent className="pt-2">
+        <div className="grid grid-cols-7 gap-1 text-xs">
           {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map(day => (
             <div 
               key={day} 
