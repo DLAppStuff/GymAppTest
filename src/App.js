@@ -456,6 +456,32 @@ const GymTrackerV3 = () => {
     
     // Get only today's sets
     const todaysSets = data.sets.filter(set => set.date === todayDate);
+
+    // Aggregate weight and volume data by date
+    const aggregatedData = data.sets.reduce((acc, set) => {
+      const date = set.date;
+      if (!acc[date]) {
+        acc[date] = {
+          maxWeight: set.weight,
+          totalVolume: set.weight * set.reps
+        };
+      } else {
+        acc[date].maxWeight = Math.max(acc[date].maxWeight, set.weight);
+        acc[date].totalVolume += set.weight * set.reps;
+      }
+      return acc;
+    }, {});
+
+    // Convert aggregated data into arrays for the chart
+    const weightData = Object.entries(aggregatedData).map(([date, data]) => ({
+      date,
+      weight: data.maxWeight
+    })).sort((a, b) => a.date.localeCompare(b.date));
+
+    const volumeData = Object.entries(aggregatedData).map(([date, data]) => ({
+      date,
+      volume: data.totalVolume
+    })).sort((a, b) => a.date.localeCompare(b.date));
     
     // Initialize input values if not set
     if (!inputValues[exerciseName]) {
@@ -591,14 +617,8 @@ const GymTrackerV3 = () => {
             {/* Charts with updated styling */}
             <div className="w-full h-64">
               <ExerciseCharts
-                weightData={data.sets.map(set => ({
-                  date: set.date,
-                  weight: parseFloat(set.weight)
-                }))}
-                volumeData={data.sets.map(set => ({
-                  date: set.date,
-                  volume: parseFloat(set.weight) * parseFloat(set.reps)
-                }))}
+                weightData={weightData}
+                volumeData={volumeData}
                 isDarkMode={isDarkMode}
               />
             </div>
@@ -626,20 +646,20 @@ const GymTrackerV3 = () => {
     if (bodyWeights.length === 0) return null;
 
     const today = new Date();
-    const lastWeek = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const lastWeekWeights = bodyWeights.filter(w => new Date(w.date) >= lastWeek);
+    const twoWeeksAgo = new Date(today.getTime() - 14 * 24 * 60 * 60 * 1000);
+    const lastTwoWeeksWeights = bodyWeights.filter(w => new Date(w.date) >= twoWeeksAgo);
     
-    const weeklyAvg = lastWeekWeights.length > 0
-      ? lastWeekWeights.reduce((sum, w) => sum + w.weight, 0) / lastWeekWeights.length
+    const weeklyAvg = lastTwoWeeksWeights.length > 0
+      ? lastTwoWeeksWeights.reduce((sum, w) => sum + w.weight, 0) / lastTwoWeeksWeights.length
       : null;
 
     const latestWeight = bodyWeights[bodyWeights.length - 1];
-    const weekAgoWeight = bodyWeights.find(w => new Date(w.date) <= lastWeek);
-    const weekChange = weekAgoWeight ? latestWeight.weight - weekAgoWeight.weight : null;
+    const twoWeeksAgoWeight = bodyWeights.find(w => new Date(w.date) <= twoWeeksAgo);
+    const twoWeekChange = twoWeeksAgoWeight ? latestWeight.weight - twoWeeksAgoWeight.weight : null;
 
     return {
       weeklyAvg: weeklyAvg?.toFixed(1),
-      weekChange: weekChange?.toFixed(1),
+      twoWeekChange: twoWeekChange?.toFixed(1),
       latest: latestWeight.weight
     };
   };
@@ -647,7 +667,7 @@ const GymTrackerV3 = () => {
   return (
     <div className={`p-4 max-w-6xl mx-auto min-h-screen ${isDarkMode ? 'bg-zinc-900 text-zinc-100' : 'bg-zinc-50 text-zinc-900'}`}>
       <div className="flex justify-between items-center mb-4">
-        <h1 className={`text-2xl font-bold ${isDarkMode ? 'text-zinc-100' : 'text-zinc-800'}`}>Enhanced Gym Tracker</h1>
+        <h1 className={`text-2xl font-bold ${isDarkMode ? 'text-zinc-100' : 'text-zinc-800'}`}>GymGenius</h1>
         <div className="flex gap-2">
           <Button 
             variant="outline" 
@@ -689,7 +709,7 @@ const GymTrackerV3 = () => {
 
         <TabsContent value="Overview">
           {/* First Part: Heatmaps and PR Tiles */}
-          <div className="w-full">
+          <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-4">
                 <WorkoutHeatmap
@@ -702,10 +722,10 @@ const GymTrackerV3 = () => {
                   isCurrentMonth={false}
                 />
                 <Card className={isDarkMode ? 'bg-zinc-800 border-zinc-700' : ''}>
-                  <CardHeader>
-                    <CardTitle className={isDarkMode ? 'text-zinc-100' : ''}>New PRs Past Month</CardTitle>
+                  <CardHeader className="py-3">
+                    <CardTitle className={`text-base ${isDarkMode ? 'text-zinc-100' : ''}`}>New PRs Past Month</CardTitle>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="pt-0">
                     <p className={`text-2xl font-bold ${isDarkMode ? 'text-zinc-100' : ''}`}>{metrics.newPRsPastMonth}</p>
                   </CardContent>
                 </Card>
@@ -721,25 +741,20 @@ const GymTrackerV3 = () => {
                   isCurrentMonth={true}
                 />
                 <Card className={isDarkMode ? 'bg-zinc-800 border-zinc-700' : ''}>
-                  <CardHeader>
-                    <CardTitle className={isDarkMode ? 'text-zinc-100' : ''}>New PRs This Month</CardTitle>
+                  <CardHeader className="py-3">
+                    <CardTitle className={`text-base ${isDarkMode ? 'text-zinc-100' : ''}`}>New PRs This Month</CardTitle>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="pt-0">
                     <p className={`text-2xl font-bold ${isDarkMode ? 'text-zinc-100' : ''}`}>{metrics.newPRsThisMonth}</p>
                   </CardContent>
                 </Card>
               </div>
             </div>
-          </div>
           
-          {/* Adding explicit margin/spacer to prevent overlap */}
-          <div className="h-24 w-full"></div>
-          
-          {/* Second Part: Monthly PRs List */}
-          <div className="w-full pt-12 mt-12">
+            {/* Monthly PRs List */}
             {monthlyPRs.length > 0 && (
               <Card className={isDarkMode ? 'bg-zinc-800 border-zinc-700' : ''}>
-                <CardHeader>
+                <CardHeader className="py-3">
                   <CardTitle className={`flex items-center justify-between ${isDarkMode ? 'text-zinc-100' : ''}`}>
                     <span>Monthly PRs</span>
                     <Button 
@@ -771,16 +786,14 @@ const GymTrackerV3 = () => {
                 )}
               </Card>
             )}
-          </div>
 
-          {/* Body Weight Tracker */}
-          <div className="w-full pt-12 mt-12">
+            {/* Body Weight Tracker */}
             <Card className={isDarkMode ? 'bg-zinc-800 border-zinc-700' : ''}>
-              <CardHeader>
+              <CardHeader className="py-3">
                 <CardTitle className={isDarkMode ? 'text-zinc-100' : ''}>Body Weight Tracker</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-6">
+                <div className="space-y-4">
                   {/* Input Section */}
                   <div className="flex items-end gap-4">
                     <div className="flex-1">
@@ -823,36 +836,36 @@ const GymTrackerV3 = () => {
                         return (
                           <>
                             <Card className={isDarkMode ? 'bg-zinc-700 border-zinc-600' : 'bg-zinc-50'}>
-                              <CardHeader className="p-4">
-                                <CardTitle className={`text-base ${isDarkMode ? 'text-zinc-100' : ''}`}>
+                              <CardHeader className="p-2">
+                                <CardTitle className={`text-xs ${isDarkMode ? 'text-zinc-100' : ''}`}>
                                   Latest Weight
                                 </CardTitle>
-                                <CardDescription className={`text-xl font-bold ${isDarkMode ? 'text-zinc-100' : ''}`}>
+                                <CardDescription className={`text-base font-bold mt-0.5 ${isDarkMode ? 'text-zinc-100' : ''}`}>
                                   {metrics.latest} kg
                                 </CardDescription>
                               </CardHeader>
                             </Card>
                             <Card className={isDarkMode ? 'bg-zinc-700 border-zinc-600' : 'bg-zinc-50'}>
-                              <CardHeader className="p-4">
-                                <CardTitle className={`text-base ${isDarkMode ? 'text-zinc-100' : ''}`}>
+                              <CardHeader className="p-2">
+                                <CardTitle className={`text-xs ${isDarkMode ? 'text-zinc-100' : ''}`}>
                                   Weekly Average
                                 </CardTitle>
-                                <CardDescription className={`text-xl font-bold ${isDarkMode ? 'text-zinc-100' : ''}`}>
+                                <CardDescription className={`text-base font-bold mt-0.5 ${isDarkMode ? 'text-zinc-100' : ''}`}>
                                   {metrics.weeklyAvg} kg
                                 </CardDescription>
                               </CardHeader>
                             </Card>
                             <Card className={isDarkMode ? 'bg-zinc-700 border-zinc-600' : 'bg-zinc-50'}>
-                              <CardHeader className="p-4">
-                                <CardTitle className={`text-base ${isDarkMode ? 'text-zinc-100' : ''}`}>
-                                  7-Day Change
+                              <CardHeader className="p-2">
+                                <CardTitle className={`text-xs ${isDarkMode ? 'text-zinc-100' : ''}`}>
+                                  14-Day Change
                                 </CardTitle>
-                                <CardDescription className={`text-xl font-bold ${
-                                  metrics.weekChange > 0 ? 'text-green-500' : 
-                                  metrics.weekChange < 0 ? 'text-red-500' : 
+                                <CardDescription className={`text-base font-bold mt-0.5 ${
+                                  metrics.twoWeekChange > 0 ? 'text-green-500' : 
+                                  metrics.twoWeekChange < 0 ? 'text-red-500' : 
                                   isDarkMode ? 'text-zinc-100' : ''
                                 }`}>
-                                  {metrics.weekChange > 0 ? '+' : ''}{metrics.weekChange} kg
+                                  {metrics.twoWeekChange > 0 ? '+' : ''}{metrics.twoWeekChange} kg
                                 </CardDescription>
                               </CardHeader>
                             </Card>
@@ -879,7 +892,7 @@ const GymTrackerV3 = () => {
 
                   {/* Weight History */}
                   {bodyWeights.length > 0 && (
-                    <div className="space-y-2 mt-4">
+                    <div className="space-y-2">
                       <h3 className={`font-medium ${isDarkMode ? 'text-zinc-100' : ''}`}>Recent Entries</h3>
                       <div className="max-h-40 overflow-y-auto space-y-2">
                         {[...bodyWeights].reverse().slice(0, 7).map((entry, idx) => (
