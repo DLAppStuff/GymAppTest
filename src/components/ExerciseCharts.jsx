@@ -1,115 +1,141 @@
-import React from 'react';
-import { ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Bar } from 'recharts';
+import React, { useMemo } from 'react';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+} from 'chart.js';
+import { Line } from 'react-chartjs-2';
+import { format } from 'date-fns';
 
-const aggregateData = (weightData, volumeData) => {
-  if (!weightData || !volumeData || weightData.length === 0) return [];
-  
-  // First aggregate max weights per day
-  const weightMap = weightData.reduce((acc, curr) => {
-    const { date, weight } = curr;
-    if (!acc[date] || weight > acc[date].weight) {
-      acc[date] = { date, weight: Number(weight) };
-    }
-    return acc;
-  }, {});
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend
+);
 
-  // Then aggregate volumes per day
-  const volumeMap = volumeData.reduce((acc, curr) => {
-    const { date, volume } = curr;
-    if (!acc[date]) {
-      acc[date] = { date, volume: 0 };
-    }
-    acc[date].volume += volume;
-    return acc;
-  }, {});
+const ExerciseCharts = ({ weightData, volumeData, isDarkMode, hideVolume = false }) => {
+  const formatDate = (dateStr) => format(new Date(dateStr), 'MMM d');
 
-  // Combine both datasets
-  const allDates = [...new Set([...Object.keys(weightMap), ...Object.keys(volumeMap)])];
-  
-  return allDates
-    .map(date => ({
-      date,
-      weight: weightMap[date]?.weight || null,
-      volume: volumeMap[date]?.volume || null
-    }))
-    .sort((a, b) => new Date(a.date) - new Date(b.date));
-};
+  const getMaxValue = (data, key = 'weight') => {
+    if (!data || data.length === 0) return 0;
+    const max = Math.max(...data.map(d => d[key]));
+    return Math.ceil(max * 1.1); // Add 10% padding
+  };
 
-const ExerciseCharts = ({ weightData, volumeData, isDarkMode }) => {
-  const combinedData = aggregateData(weightData, volumeData);
+  const chartData = useMemo(() => {
+    // Get unique dates and sort them
+    const dates = [...new Set([
+      ...weightData.map(d => d.date),
+      ...(!hideVolume ? volumeData.map(d => d.date) : [])
+    ])].sort();
 
-  return (
-    <div className="space-y-6">
-      <div>
-        <h4 className={`font-medium text-center mb-4 ${isDarkMode ? 'text-zinc-100' : 'text-zinc-700'}`}>
-          Progress Overview
-        </h4>
-        <div className="h-[400px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={combinedData} margin={{ right: 20 }}>
-              <CartesianGrid horizontal={true} vertical={false} stroke={isDarkMode ? '#27272a' : '#e4e4e7'} />
-              <XAxis 
-                dataKey="date" 
-                stroke={isDarkMode ? '#71717a' : '#3f3f46'}
-              />
-              {/* Left Y-axis for Weight */}
-              <YAxis 
-                yAxisId="weight"
-                stroke={isDarkMode ? '#f97316' : '#ea580c'}
-                width={65}
-                tickFormatter={(value) => `${value} kg`}
-              />
-              {/* Right Y-axis for Volume */}
-              <YAxis 
-                yAxisId="volume"
-                orientation="right"
-                stroke={isDarkMode ? '#a1a1aa' : '#52525b'}
-                width={65}
-                tickFormatter={(value) => `${value} kg`}
-              />
-              <Tooltip 
-                contentStyle={{
-                  backgroundColor: isDarkMode ? '#27272a' : '#ffffff',
-                  border: 'none',
-                  borderRadius: '0.375rem',
-                  color: isDarkMode ? '#ffffff' : '#000000'
-                }}
-                formatter={(value, name) => {
-                  if (name === 'weight') return [`${value} kg`, 'Max Weight'];
-                  return [`${value} kg`, 'Volume'];
-                }}
-              />
-              {/* Volume Bars */}
-              <Bar
-                yAxisId="volume"
-                dataKey="volume"
-                fill={isDarkMode ? '#71717a' : '#3f3f46'}
-                opacity={0.7}
-              />
-              {/* Weight Line */}
-              <Line
-                yAxisId="weight"
-                type="linear"
-                dataKey="weight"
-                stroke={isDarkMode ? '#f97316' : '#ea580c'}
-                strokeWidth={2}
-                dot={{
-                  r: 4,
-                  fill: isDarkMode ? '#f97316' : '#ea580c',
-                  stroke: isDarkMode ? '#f97316' : '#ea580c'
-                }}
-                activeDot={{
-                  r: 6,
-                  fill: isDarkMode ? '#f97316' : '#ea580c',
-                  stroke: isDarkMode ? '#f97316' : '#ea580c'
-                }}
-              />
-            </ComposedChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-    </div>
-  );
+    // Create datasets
+    return {
+      labels: dates.map(formatDate),
+      datasets: [
+        {
+          label: 'Weight',
+          data: dates.map(date => {
+            const point = weightData.find(d => d.date === date);
+            return point ? point.weight : null;
+          }),
+          borderColor: isDarkMode ? '#f97316' : '#ea580c',
+          backgroundColor: isDarkMode ? '#f97316' : '#ea580c',
+          yAxisID: 'y',
+          tension: 0.3,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+        },
+        ...(!hideVolume ? [{
+          label: 'Volume',
+          data: dates.map(date => {
+            const point = volumeData.find(d => d.date === date);
+            return point ? point.volume : null;
+          }),
+          borderColor: isDarkMode ? '#a1a1aa' : '#52525b',
+          backgroundColor: isDarkMode ? '#a1a1aa' : '#52525b',
+          yAxisID: 'y1',
+          tension: 0.3,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+        }] : []),
+      ],
+    };
+  }, [weightData, volumeData, isDarkMode, hideVolume]);
+
+  const chartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: {
+      mode: 'index',
+      intersect: false,
+    },
+    plugins: {
+      legend: {
+        display: false,
+      },
+      tooltip: {
+        mode: 'index',
+        intersect: false,
+      },
+    },
+    scales: {
+      y: {
+        type: 'linear',
+        display: true,
+        position: 'left',
+        title: {
+          display: true,
+          text: 'Weight (kg)',
+          color: isDarkMode ? '#e4e4e7' : '#27272a',
+        },
+        max: getMaxValue(weightData),
+        grid: {
+          color: isDarkMode ? '#3f3f46' : '#e4e4e7',
+        },
+        ticks: {
+          color: isDarkMode ? '#e4e4e7' : '#27272a',
+        },
+      },
+      ...(hideVolume ? {} : {
+        y1: {
+          type: 'linear',
+          display: true,
+          position: 'right',
+          title: {
+            display: true,
+            text: 'Volume (kg)',
+            color: isDarkMode ? '#d4d4d8' : '#52525b',
+          },
+          grid: {
+            drawOnChartArea: false,
+          },
+          ticks: {
+            color: isDarkMode ? '#d4d4d8' : '#52525b',
+          },
+        },
+      }),
+      x: {
+        grid: {
+          color: isDarkMode ? '#3f3f46' : '#e4e4e7',
+        },
+        ticks: {
+          color: isDarkMode ? '#e4e4e7' : '#27272a',
+        },
+      },
+    },
+  };
+
+  return <Line options={chartOptions} data={chartData} />;
 };
 
 export default ExerciseCharts; 

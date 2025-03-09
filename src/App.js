@@ -17,6 +17,7 @@ import {
   SheetTrigger,
 } from "./components/ui/sheet";
 import "./styles/globals.css";
+import { format } from 'date-fns';
 
 // Long press hook from the old version
 const useLongPress = (callback = () => {}, ms = 800) => {
@@ -87,6 +88,15 @@ const GymTrackerV3 = () => {
 
   // Add state for input values
   const [inputValues, setInputValues] = useState({});
+
+  // Add body weight tracking states
+  const [bodyWeights, setBodyWeights] = useState(() => {
+    const saved = localStorage.getItem('bodyWeights');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const [newWeight, setNewWeight] = useState('');
+  const [weightDate, setWeightDate] = useState(new Date().toISOString().split('T')[0]);
 
   // Add stopwatch effect
   useEffect(() => {
@@ -168,6 +178,11 @@ const GymTrackerV3 = () => {
       document.documentElement.classList.remove('dark');
     }
   }, [isDarkMode]);
+
+  // Add body weight tracking effect
+  useEffect(() => {
+    localStorage.setItem('bodyWeights', JSON.stringify(bodyWeights));
+  }, [bodyWeights]);
 
   // Date utility functions
   const getMondayOfCurrentWeek = () => {
@@ -439,6 +454,9 @@ const GymTrackerV3 = () => {
     const todayDate = new Date().toISOString().split('T')[0];
     const lastSet = [...data.sets].reverse().find(set => set.date === todayDate) || data.sets[data.sets.length - 1];
     
+    // Get only today's sets
+    const todaysSets = data.sets.filter(set => set.date === todayDate);
+    
     // Initialize input values if not set
     if (!inputValues[exerciseName]) {
       setInputValues(prev => ({
@@ -455,7 +473,7 @@ const GymTrackerV3 = () => {
       <Card className={`mb-4 border-zinc-200 ${isDarkMode ? 'bg-zinc-900' : 'bg-white'}`}>
         <CardHeader className="pb-2">
           <div className="flex justify-between items-start">
-            <div>
+            <div className="space-y-2">
               <CardTitle className={isDarkMode ? 'text-zinc-100' : 'text-zinc-800'}>{exerciseName}</CardTitle>
               {prs[exerciseName] && (
                 <CardDescription>
@@ -477,16 +495,6 @@ const GymTrackerV3 = () => {
         </CardHeader>
         <CardContent className="pt-0">
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              {/* PR indicator */}
-              {prs[exerciseName] && (
-                <div className="flex items-center gap-1 text-amber-600">
-                  <Trophy size={16} />
-                  <span className="text-sm font-medium">New PR!</span>
-                </div>
-              )}
-            </div>
-
             <Accordion type="single" collapsible defaultValue="item-1">
               <AccordionItem value="item-1">
                 <AccordionTrigger className={isDarkMode ? 'text-zinc-100' : 'text-zinc-700'}>
@@ -554,7 +562,6 @@ const GymTrackerV3 = () => {
                       const values = inputValues[exerciseName];
                       if (values?.weight && values?.reps) {
                         handleAddSet(exerciseName, values.weight, values.reps, values.date || todayDate);
-                        // Reset reps after adding
                         handleInputChange(exerciseName, 'reps', '');
                       }
                     }}
@@ -565,15 +572,15 @@ const GymTrackerV3 = () => {
               </AccordionItem>
             </Accordion>
 
-            {/* Exercise history */}
+            {/* Exercise history - only show today's sets */}
             <div>
               <div className="grid grid-cols-3 gap-2">
-                {data.sets.map((set, index) => (
+                {todaysSets.map((set, index) => (
                   <SetItem
                     key={index}
                     exerciseName={exerciseName}
                     set={set}
-                    index={index}
+                    index={data.sets.indexOf(set)}
                     deleteSetCallback={deleteSet}
                     isDarkMode={isDarkMode}
                   />
@@ -581,22 +588,60 @@ const GymTrackerV3 = () => {
               </div>
             </div>
 
-            {/* Charts */}
-            <ExerciseCharts
-              weightData={data.sets.map(set => ({
-                date: set.date,
-                weight: parseFloat(set.weight)
-              }))}
-              volumeData={data.sets.map(set => ({
-                date: set.date,
-                volume: parseFloat(set.weight) * parseFloat(set.reps)
-              }))}
-              isDarkMode={isDarkMode}
-            />
+            {/* Charts with updated styling */}
+            <div className="w-full h-64">
+              <ExerciseCharts
+                weightData={data.sets.map(set => ({
+                  date: set.date,
+                  weight: parseFloat(set.weight)
+                }))}
+                volumeData={data.sets.map(set => ({
+                  date: set.date,
+                  volume: parseFloat(set.weight) * parseFloat(set.reps)
+                }))}
+                isDarkMode={isDarkMode}
+              />
+            </div>
           </div>
         </CardContent>
       </Card>
     );
+  };
+
+  // Add body weight tracking functions
+  const handleAddWeight = () => {
+    if (newWeight && weightDate) {
+      setBodyWeights(prev => {
+        // Remove any existing weight for the same date
+        const filtered = prev.filter(w => w.date !== weightDate);
+        return [...filtered, { date: weightDate, weight: parseFloat(newWeight) }].sort((a, b) => 
+          new Date(a.date) - new Date(b.date)
+        );
+      });
+      setNewWeight('');
+    }
+  };
+
+  const getWeightMetrics = () => {
+    if (bodyWeights.length === 0) return null;
+
+    const today = new Date();
+    const lastWeek = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const lastWeekWeights = bodyWeights.filter(w => new Date(w.date) >= lastWeek);
+    
+    const weeklyAvg = lastWeekWeights.length > 0
+      ? lastWeekWeights.reduce((sum, w) => sum + w.weight, 0) / lastWeekWeights.length
+      : null;
+
+    const latestWeight = bodyWeights[bodyWeights.length - 1];
+    const weekAgoWeight = bodyWeights.find(w => new Date(w.date) <= lastWeek);
+    const weekChange = weekAgoWeight ? latestWeight.weight - weekAgoWeight.weight : null;
+
+    return {
+      weeklyAvg: weeklyAvg?.toFixed(1),
+      weekChange: weekChange?.toFixed(1),
+      latest: latestWeight.weight
+    };
   };
 
   return (
@@ -727,6 +772,140 @@ const GymTrackerV3 = () => {
               </Card>
             )}
           </div>
+
+          {/* Body Weight Tracker */}
+          <div className="w-full pt-12 mt-12">
+            <Card className={isDarkMode ? 'bg-zinc-800 border-zinc-700' : ''}>
+              <CardHeader>
+                <CardTitle className={isDarkMode ? 'text-zinc-100' : ''}>Body Weight Tracker</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-6">
+                  {/* Input Section */}
+                  <div className="flex gap-4">
+                    <div className="flex-1">
+                      <Label htmlFor="weight">Weight (kg)</Label>
+                      <Input
+                        id="weight"
+                        type="number"
+                        step="0.1"
+                        value={newWeight}
+                        onChange={(e) => setNewWeight(e.target.value)}
+                        className={`${isDarkMode ? 'bg-zinc-800 border-zinc-700' : 'bg-zinc-50 border-zinc-200'}`}
+                        placeholder="Enter weight..."
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <Label htmlFor="weightDate">Date</Label>
+                      <Input
+                        id="weightDate"
+                        type="date"
+                        value={weightDate}
+                        onChange={(e) => setWeightDate(e.target.value)}
+                        className={`${isDarkMode ? 'bg-zinc-800 border-zinc-700' : 'bg-zinc-50 border-zinc-200'}`}
+                      />
+                    </div>
+                    <div className="flex items-end">
+                      <Button 
+                        onClick={handleAddWeight}
+                        className={isDarkMode ? 'bg-zinc-700 hover:bg-zinc-600' : ''}
+                        disabled={!newWeight || !weightDate}
+                      >
+                        Add Weight
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Metrics Section */}
+                  {bodyWeights.length > 0 && (
+                    <div className="grid grid-cols-3 gap-4">
+                      {(() => {
+                        const metrics = getWeightMetrics();
+                        if (!metrics) return null;
+                        return (
+                          <>
+                            <Card className={isDarkMode ? 'bg-zinc-700 border-zinc-600' : 'bg-zinc-50'}>
+                              <CardHeader className="p-4">
+                                <CardTitle className={`text-base ${isDarkMode ? 'text-zinc-100' : ''}`}>
+                                  Latest Weight
+                                </CardTitle>
+                                <CardDescription className={`text-xl font-bold ${isDarkMode ? 'text-zinc-100' : ''}`}>
+                                  {metrics.latest} kg
+                                </CardDescription>
+                              </CardHeader>
+                            </Card>
+                            <Card className={isDarkMode ? 'bg-zinc-700 border-zinc-600' : 'bg-zinc-50'}>
+                              <CardHeader className="p-4">
+                                <CardTitle className={`text-base ${isDarkMode ? 'text-zinc-100' : ''}`}>
+                                  Weekly Average
+                                </CardTitle>
+                                <CardDescription className={`text-xl font-bold ${isDarkMode ? 'text-zinc-100' : ''}`}>
+                                  {metrics.weeklyAvg} kg
+                                </CardDescription>
+                              </CardHeader>
+                            </Card>
+                            <Card className={isDarkMode ? 'bg-zinc-700 border-zinc-600' : 'bg-zinc-50'}>
+                              <CardHeader className="p-4">
+                                <CardTitle className={`text-base ${isDarkMode ? 'text-zinc-100' : ''}`}>
+                                  7-Day Change
+                                </CardTitle>
+                                <CardDescription className={`text-xl font-bold ${
+                                  metrics.weekChange > 0 ? 'text-green-500' : 
+                                  metrics.weekChange < 0 ? 'text-red-500' : 
+                                  isDarkMode ? 'text-zinc-100' : ''
+                                }`}>
+                                  {metrics.weekChange > 0 ? '+' : ''}{metrics.weekChange} kg
+                                </CardDescription>
+                              </CardHeader>
+                            </Card>
+                          </>
+                        );
+                      })()}
+                    </div>
+                  )}
+
+                  {/* Weight Chart */}
+                  {bodyWeights.length > 0 && (
+                    <div className="h-64">
+                      <ExerciseCharts
+                        weightData={bodyWeights.map(w => ({
+                          date: w.date,
+                          weight: w.weight
+                        }))}
+                        volumeData={[]}
+                        isDarkMode={isDarkMode}
+                        hideVolume={true}
+                      />
+                    </div>
+                  )}
+
+                  {/* Weight History */}
+                  {bodyWeights.length > 0 && (
+                    <div className="space-y-2 mt-4">
+                      <h3 className={`font-medium ${isDarkMode ? 'text-zinc-100' : ''}`}>Recent Entries</h3>
+                      <div className="max-h-40 overflow-y-auto space-y-2">
+                        {[...bodyWeights].reverse().slice(0, 7).map((entry, idx) => (
+                          <div 
+                            key={entry.date} 
+                            className={`flex justify-between p-2 rounded ${
+                              isDarkMode ? 'bg-zinc-700' : 'bg-zinc-50'
+                            }`}
+                          >
+                            <span className={isDarkMode ? 'text-zinc-200' : ''}>
+                              {format(new Date(entry.date), 'MMM d, yyyy')}
+                            </span>
+                            <span className={`font-medium ${isDarkMode ? 'text-zinc-100' : ''}`}>
+                              {entry.weight} kg
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
         
         {['Push', 'Pull', 'Legs'].map((category) => (
@@ -756,10 +935,10 @@ const GymTrackerV3 = () => {
       <Button 
         variant="default" 
         size="icon" 
-        className="fixed bottom-6 right-6 p-4 rounded-full shadow-lg bg-zinc-800 hover:bg-zinc-700"
+        className="fixed bottom-6 right-6 w-14 h-14 rounded-full shadow-lg bg-zinc-800 hover:bg-zinc-700 p-2"
         onClick={() => setShowAddExerciseModal(true)}
       >
-        <Plus size={24} />
+        <Plus size={40} className={isDarkMode ? 'text-white' : ''} />
       </Button>
 
       {/* Stopwatch Drawer */}
@@ -768,14 +947,14 @@ const GymTrackerV3 = () => {
           <Button
             variant="default"
             size="icon"
-            className={`fixed bottom-24 left-6 p-4 rounded-full shadow-lg ${
+            className={`fixed bottom-24 left-6 w-14 h-14 rounded-full shadow-lg p-2 ${
               isDarkMode
                 ? 'bg-zinc-700 hover:bg-zinc-600'
                 : 'bg-zinc-800 hover:bg-zinc-700'
             }`}
             onClick={handleStopwatchOpen}
           >
-            <Timer size={24} />
+            <Timer size={40} className={isDarkMode ? 'text-white' : ''} />
           </Button>
         </SheetTrigger>
         <SheetContent side="left" className={isDarkMode ? 'bg-zinc-800 border-zinc-700' : 'bg-white'}>
@@ -799,14 +978,14 @@ const GymTrackerV3 = () => {
       <Button 
         variant="default" 
         size="icon" 
-        className={`fixed bottom-6 left-6 p-4 rounded-full shadow-lg ${
+        className={`fixed bottom-6 left-6 w-14 h-14 rounded-full shadow-lg p-2 ${
           isDarkMode 
             ? 'bg-zinc-700 hover:bg-zinc-600' 
             : 'bg-zinc-800 hover:bg-zinc-700'
         }`}
         onClick={() => setIsDarkMode(!isDarkMode)}
       >
-        {isDarkMode ? <Sun size={24} /> : <Moon size={24} />}
+        {isDarkMode ? <Sun size={40} className="text-white" /> : <Moon size={40} className="text-white" />}
       </Button>
 
       {showAddExerciseModal && (

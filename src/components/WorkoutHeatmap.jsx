@@ -1,7 +1,7 @@
 import React from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "./ui/card";
 
-const WorkoutHeatmap = ({ workoutDates, startDate, endDate, isDarkMode, isCurrentMonth = false }) => {
+const WorkoutHeatmap = ({ workoutDates, startDate, endDate, isDarkMode, isCurrentMonth }) => {
   const getDaysInMonth = (date) => {
     return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
   };
@@ -13,60 +13,80 @@ const WorkoutHeatmap = ({ workoutDates, startDate, endDate, isDarkMode, isCurren
   };
 
   const today = new Date();
-  const daysInMonth = getDaysInMonth(startDate);
+  today.setHours(0, 0, 0, 0);
+
   const firstDayOfMonth = getFirstDayOfMonth(startDate);
-  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-  const workoutDatesSet = new Set(workoutDates.map(date => new Date(date).getDate()));
 
-  // Create calendar grid with empty cells for proper alignment
-  const calendarGrid = Array(42).fill(null); // 6 rows × 7 days = 42 cells
-  days.forEach((day, index) => {
-    calendarGrid[firstDayOfMonth + index] = day;
-  });
+  const generateDays = () => {
+    const days = [];
+    const totalDays = getDaysInMonth(startDate);
+    const workoutDatesSet = new Set(workoutDates);
 
-  const isToday = (day) => {
-    return isCurrentMonth && 
-           today.getDate() === day && 
-           today.getMonth() === startDate.getMonth() && 
-           today.getFullYear() === startDate.getFullYear();
+    // Add empty cells for proper alignment
+    for (let i = 0; i < firstDayOfMonth; i++) {
+      days.push(
+        <div
+          key={`empty-${i}`}
+          className="aspect-square rounded-lg"
+        />
+      );
+    }
+
+    for (let i = 1; i <= totalDays; i++) {
+      const currentDate = new Date(startDate.getFullYear(), startDate.getMonth(), i);
+      const dateString = currentDate.toISOString().split('T')[0];
+      const isWorkoutDay = workoutDatesSet.has(dateString);
+      // Only show as workout day if it's in the past or today
+      const shouldShowAsWorkout = isWorkoutDay && currentDate <= today;
+
+      days.push(
+        <div
+          key={i}
+          className={`aspect-square flex items-center justify-center rounded-lg transition-all duration-200 hover:scale-105 ${
+            shouldShowAsWorkout
+              ? 'bg-[#1e4d5c] hover:bg-[#1a4552] shadow-sm'
+              : isDarkMode
+              ? 'bg-zinc-800 hover:bg-zinc-700'
+              : 'bg-zinc-100 hover:bg-zinc-200'
+          } ${
+            currentDate.toDateString() === today.toDateString()
+              ? 'ring-2 ring-blue-400'
+              : ''
+          }`}
+        >
+          <span className={`text-xs ${
+            shouldShowAsWorkout
+              ? 'text-white font-medium'
+              : isDarkMode
+              ? 'text-zinc-400'
+              : 'text-zinc-600'
+          }`}>
+            {i}
+          </span>
+        </div>
+      );
+    }
+    return days;
   };
 
   return (
-    <Card className={`${isDarkMode ? 'bg-zinc-800 border-zinc-700' : ''} h-full`}>
+    <Card className={`${isDarkMode ? 'bg-zinc-800/50 border-zinc-700' : ''} h-full backdrop-blur-sm`}>
       <CardHeader className="pb-2">
         <CardTitle className={`text-base ${isDarkMode ? 'text-zinc-100' : ''}`}>
           {startDate.toLocaleString('default', { month: 'long', year: 'numeric' })}
         </CardTitle>
       </CardHeader>
       <CardContent className="pt-0">
-        <div className="grid grid-cols-7 gap-1 text-xs">
-          {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => (
+        <div className="grid grid-cols-7 gap-1.5 text-xs">
+          {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map(day => (
             <div 
               key={day} 
-              className={`text-center ${isDarkMode ? 'text-zinc-400' : 'text-zinc-600'}`}
+              className={`text-center font-medium ${isDarkMode ? 'text-zinc-400' : 'text-zinc-600'}`}
             >
               {day}
             </div>
           ))}
-          {calendarGrid.map((day, index) => (
-            <div
-              key={index}
-              className={`aspect-square flex items-center justify-center text-xs rounded-sm
-                ${!day ? 'invisible' : ''}
-                ${isToday(day) ? 'ring-2 ring-blue-500' : ''}
-                ${workoutDatesSet.has(day) 
-                  ? isDarkMode 
-                    ? 'bg-green-800 text-green-100' 
-                    : 'bg-green-100 text-green-800'
-                  : isDarkMode
-                    ? 'bg-zinc-700 text-zinc-300'
-                    : 'bg-zinc-100 text-zinc-600'
-                }
-              `}
-            >
-              {day}
-            </div>
-          ))}
+          {generateDays()}
         </div>
       </CardContent>
     </Card>
