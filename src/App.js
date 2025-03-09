@@ -8,7 +8,7 @@ import {
   Tooltip,
   ResponsiveContainer
 } from 'recharts';
-import { Trophy, Plus, Save, Download, Upload, ChevronDown, ChevronUp, X } from 'lucide-react';
+import { Trophy, Plus, Download, Upload, ChevronDown, ChevronUp, X } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "./components/ui/card";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "./components/ui/accordion";
@@ -64,29 +64,15 @@ const SetItem = ({ exerciseName, set, index, deleteSetCallback }) => {
 const GymTrackerV3 = () => {
   const [exercises, setExercises] = useState({});
   const [prs, setPRs] = useState({});
-  const [showExercise, setShowExercise] = useState({});
   const [currentTab, setCurrentTab] = useState('Overview');
   const [showAddExerciseModal, setShowAddExerciseModal] = useState(false);
   const [newExercise, setNewExercise] = useState({ name: '', category: 'Push' });
-  const [showGraphs, setShowGraphs] = useState({});
   const [showMonthlyPRList, setShowMonthlyPRList] = useState(false);
   const [selectedExercises, setSelectedExercises] = useState({
     Push: '',
     Pull: '',
     Legs: ''
   });
-
-  // Update showGraphs when an exercise is selected
-  useEffect(() => {
-    Object.entries(selectedExercises).forEach(([category, exerciseName]) => {
-      if (exerciseName) {
-        setShowGraphs(prev => ({
-          ...prev,
-          [exerciseName]: true
-        }));
-      }
-    });
-  }, [selectedExercises]);
 
   useEffect(() => {
     const savedData = localStorage.getItem('gymProgress_v3');
@@ -191,20 +177,6 @@ const GymTrackerV3 = () => {
     };
   };
 
-  const toggleExerciseView = (exerciseName) => {
-    setShowExercise((prev) => ({
-      ...prev,
-      [exerciseName]: !prev[exerciseName]
-    }));
-  };
-
-  const toggleGraphs = (exercise) => {
-    setShowGraphs((prev) => ({
-      ...prev,
-      [exercise]: !prev[exercise]
-    }));
-  };
-
   const handleDeleteExercise = (exerciseName) => {
     if (window.confirm(`Are you sure you want to delete exercise "${exerciseName}"?`)) {
       setExercises((prev) => {
@@ -294,7 +266,6 @@ const GymTrackerV3 = () => {
   const deleteSet = (exerciseName, setIndex) => {
     setExercises((prev) => {
       const updatedExercise = { ...prev[exerciseName] };
-      const setDate = updatedExercise.sets[setIndex].date;
       updatedExercise.sets = updatedExercise.sets.filter((_, idx) => idx !== setIndex);
       
       // Recalculate daily volume
