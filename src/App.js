@@ -1,19 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer
-} from 'recharts';
-import { Trophy, Plus, Download, Upload, ChevronDown, ChevronUp, X, Moon, Sun } from 'lucide-react';
+import { Trophy, Plus, Download, Upload, ChevronDown, ChevronUp, X, Moon, Sun, Timer } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "./components/ui/card";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "./components/ui/accordion";
 import { Button } from "./components/ui/button";
 import { Combobox } from "./components/ui/combobox";
+import { Label } from "./components/ui/label";
+import { Input } from "./components/ui/input";
+import ExerciseCharts from './components/ExerciseCharts';
+import WorkoutHeatmap from './components/WorkoutHeatmap';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "./components/ui/sheet";
 import "./styles/globals.css";
 
 // Long press hook from the old version
@@ -72,12 +74,75 @@ const GymTrackerV3 = () => {
   const [showAddExerciseModal, setShowAddExerciseModal] = useState(false);
   const [newExercise, setNewExercise] = useState({ name: '', category: 'Push' });
   const [showMonthlyPRList, setShowMonthlyPRList] = useState(false);
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(true);
   const [selectedExercises, setSelectedExercises] = useState({
     Push: '',
     Pull: '',
     Legs: ''
   });
+  const [stopwatchTime, setStopwatchTime] = useState(0);
+  const [isStopwatchRunning, setIsStopwatchRunning] = useState(false);
+  const [exerciseTimers, setExerciseTimers] = useState({});
+  const [exerciseTimerIntervals, setExerciseTimerIntervals] = useState({});
+
+  // Add state for input values
+  const [inputValues, setInputValues] = useState({});
+
+  // Add stopwatch effect
+  useEffect(() => {
+    let intervalId;
+    if (isStopwatchRunning) {
+      intervalId = setInterval(() => {
+        setStopwatchTime(time => time + 1);
+      }, 1000);
+    }
+    return () => clearInterval(intervalId);
+  }, [isStopwatchRunning]);
+
+  // Format time for stopwatch
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Reset stopwatch when drawer opens
+  const handleStopwatchOpen = () => {
+    setStopwatchTime(0);
+    setIsStopwatchRunning(true);
+  };
+
+  // Add exercise timer effect
+  useEffect(() => {
+    return () => {
+      // Cleanup intervals on unmount
+      Object.values(exerciseTimerIntervals).forEach(interval => clearInterval(interval));
+    };
+  }, [exerciseTimerIntervals]);
+
+  // Handle exercise timer toggle
+  const toggleExerciseTimer = (exerciseName) => {
+    if (!exerciseTimers[exerciseName] || exerciseTimers[exerciseName] === false) {
+      // Start timer
+      setExerciseTimers(prev => ({ ...prev, [exerciseName]: 0 }));
+      const intervalId = setInterval(() => {
+        setExerciseTimers(prev => ({
+          ...prev,
+          [exerciseName]: (prev[exerciseName] || 0) + 1
+        }));
+      }, 1000);
+      setExerciseTimerIntervals(prev => ({ ...prev, [exerciseName]: intervalId }));
+    } else {
+      // Stop and reset timer
+      clearInterval(exerciseTimerIntervals[exerciseName]);
+      setExerciseTimerIntervals(prev => {
+        const newIntervals = { ...prev };
+        delete newIntervals[exerciseName];
+        return newIntervals;
+      });
+      setExerciseTimers(prev => ({ ...prev, [exerciseName]: false }));
+    }
+  };
 
   useEffect(() => {
     const savedData = localStorage.getItem('gymProgress_v3');
@@ -297,19 +362,6 @@ const GymTrackerV3 = () => {
     });
   };
 
-  const prepareWeightData = (sets) => {
-    const dailyMaxes = sets.reduce((acc, set) => {
-      const { date, weight } = set;
-      if (!acc[date] || weight > acc[date].weight) {
-        acc[date] = { date, weight };
-      }
-      return acc;
-    }, {});
-    return Object.values(dailyMaxes).sort(
-      (a, b) => new Date(a.date) - new Date(b.date)
-    );
-  };
-
   const handleExport = () => {
     const dataStr = JSON.stringify({ exercises, prs }, null, 2);
     const blob = new Blob([dataStr], { type: 'application/json' });
@@ -368,6 +420,17 @@ const GymTrackerV3 = () => {
       }));
   };
 
+  // Function to update input values
+  const handleInputChange = (exerciseName, field, value) => {
+    setInputValues(prev => ({
+      ...prev,
+      [exerciseName]: {
+        ...prev[exerciseName],
+        [field]: value
+      }
+    }));
+  };
+
   // Render the selected exercise card
   const renderExerciseCard = (exerciseName) => {
     if (!exerciseName || !exercises[exerciseName]) return null;
@@ -376,8 +439,20 @@ const GymTrackerV3 = () => {
     const todayDate = new Date().toISOString().split('T')[0];
     const lastSet = [...data.sets].reverse().find(set => set.date === todayDate) || data.sets[data.sets.length - 1];
     
+    // Initialize input values if not set
+    if (!inputValues[exerciseName]) {
+      setInputValues(prev => ({
+        ...prev,
+        [exerciseName]: {
+          weight: lastSet?.weight || '',
+          reps: lastSet?.reps || '',
+          date: todayDate
+        }
+      }));
+    }
+
     return (
-      <Card key={exerciseName} className={`mb-4 ${isDarkMode ? 'bg-zinc-800 border-zinc-700' : 'bg-white border-zinc-200'}`}>
+      <Card className={`mb-4 border-zinc-200 ${isDarkMode ? 'bg-zinc-900' : 'bg-white'}`}>
         <CardHeader className="pb-2">
           <div className="flex justify-between items-start">
             <div>
@@ -402,143 +477,122 @@ const GymTrackerV3 = () => {
         </CardHeader>
         <CardContent className="pt-0">
           <div className="space-y-3">
-            <Accordion type="single" collapsible defaultValue="add-set">
-              <AccordionItem value="add-set" className={isDarkMode ? 'border-zinc-700' : 'border-zinc-200'}>
-                <AccordionTrigger className={isDarkMode ? 'hover:bg-zinc-700 text-zinc-100' : 'hover:bg-zinc-50 text-zinc-700'}>
-                  Add Set
+            <div className="flex items-center justify-between">
+              {/* PR indicator */}
+              {prs[exerciseName] && (
+                <div className="flex items-center gap-1 text-amber-600">
+                  <Trophy size={16} />
+                  <span className="text-sm font-medium">New PR!</span>
+                </div>
+              )}
+            </div>
+
+            <Accordion type="single" collapsible defaultValue="item-1">
+              <AccordionItem value="item-1">
+                <AccordionTrigger className={isDarkMode ? 'text-zinc-100' : 'text-zinc-700'}>
+                  Add New Set
                 </AccordionTrigger>
                 <AccordionContent>
-                  <form onSubmit={(e) => {
-                    e.preventDefault();
-                    const formData = new FormData(e.target);
-                    handleAddSet(
-                      exerciseName,
-                      formData.get('weight'),
-                      formData.get('reps'),
-                      formData.get('date')
-                    );
-                    e.target.reset();
-                    const weightInput = e.target.querySelector('input[name="weight"]');
-                    if (weightInput) {
-                      weightInput.value = formData.get('weight');
-                    }
-                  }}>
-                    <div className="space-y-2">
-                      <div className="grid grid-cols-3 gap-2">
-                        <input 
-                          type="number" 
-                          name="weight" 
-                          placeholder="Weight (kg)" 
-                          className={`w-full p-2 border rounded ${
-                            isDarkMode 
-                              ? 'bg-zinc-700 border-zinc-600 text-zinc-100 placeholder:text-zinc-400 focus:border-zinc-500 focus:ring-zinc-500' 
-                              : 'bg-zinc-50 border-zinc-200 placeholder:text-zinc-400 focus:border-zinc-400 focus:ring-zinc-400'
-                          }`}
-                          defaultValue={lastSet?.weight || ''} 
-                          required 
-                        />
-                        <input 
-                          type="number" 
-                          name="reps" 
-                          placeholder="Reps" 
-                          className={`w-full p-2 border rounded ${
-                            isDarkMode 
-                              ? 'bg-zinc-700 border-zinc-600 text-zinc-100 placeholder:text-zinc-400 focus:border-zinc-500 focus:ring-zinc-500' 
-                              : 'bg-zinc-50 border-zinc-200 placeholder:text-zinc-400 focus:border-zinc-400 focus:ring-zinc-400'
-                          }`}
-                          required 
-                        />
-                        <input 
-                          type="date" 
-                          name="date" 
-                          defaultValue={todayDate} 
-                          className={`w-full p-2 border rounded ${
-                            isDarkMode 
-                              ? 'bg-zinc-700 border-zinc-600 text-zinc-100 focus:border-zinc-500 focus:ring-zinc-500' 
-                              : 'bg-zinc-50 border-zinc-200 text-zinc-700 focus:border-zinc-400 focus:ring-zinc-400'
-                          }`}
-                          required 
-                        />
-                      </div>
-                      <Button 
-                        type="submit" 
-                        className={`w-full ${
-                          isDarkMode 
-                            ? 'bg-zinc-700 hover:bg-zinc-600 text-zinc-100' 
-                            : 'bg-zinc-800 hover:bg-zinc-700 text-white'
-                        }`}
-                      >
-                        Add Set
-                      </Button>
+                  {/* Add Stopwatch */}
+                  <div className="flex items-center gap-2 mb-4">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => toggleExerciseTimer(exerciseName)}
+                      className={`${isDarkMode ? 'bg-zinc-800 hover:bg-zinc-700' : 'bg-zinc-100 hover:bg-zinc-200'}`}
+                    >
+                      <Timer size={16} />
+                    </Button>
+                    <span className={`text-sm font-medium ${
+                      typeof exerciseTimers[exerciseName] === 'number' && exerciseTimers[exerciseName] >= 45
+                        ? 'text-green-500'
+                        : isDarkMode
+                        ? 'text-zinc-100'
+                        : 'text-zinc-900'
+                    }`}>
+                      {typeof exerciseTimers[exerciseName] === 'number'
+                        ? formatTime(exerciseTimers[exerciseName])
+                        : '0:00'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <Label htmlFor="weight">Weight (kg)</Label>
+                      <Input
+                        id="weight"
+                        type="number"
+                        value={inputValues[exerciseName]?.weight || ''}
+                        onChange={(e) => handleInputChange(exerciseName, 'weight', e.target.value)}
+                        className={`${isDarkMode ? 'bg-zinc-800 border-zinc-700' : 'bg-zinc-50 border-zinc-200'}`}
+                      />
                     </div>
-                  </form>
+                    <div>
+                      <Label htmlFor="reps">Reps</Label>
+                      <Input
+                        id="reps"
+                        type="number"
+                        value={inputValues[exerciseName]?.reps || ''}
+                        onChange={(e) => handleInputChange(exerciseName, 'reps', e.target.value)}
+                        className={`${isDarkMode ? 'bg-zinc-800 border-zinc-700' : 'bg-zinc-50 border-zinc-200'}`}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="date">Date</Label>
+                      <Input
+                        id="date"
+                        type="date"
+                        value={inputValues[exerciseName]?.date || todayDate}
+                        onChange={(e) => handleInputChange(exerciseName, 'date', e.target.value)}
+                        className={`${isDarkMode ? 'bg-zinc-800 border-zinc-700' : 'bg-zinc-50 border-zinc-200'}`}
+                      />
+                    </div>
+                  </div>
+                  <Button
+                    className={`w-full mt-4 ${isDarkMode ? 'bg-zinc-700 hover:bg-zinc-600' : 'bg-zinc-800 hover:bg-zinc-700'} text-white`}
+                    onClick={() => {
+                      const values = inputValues[exerciseName];
+                      if (values?.weight && values?.reps) {
+                        handleAddSet(exerciseName, values.weight, values.reps, values.date || todayDate);
+                        // Reset reps after adding
+                        handleInputChange(exerciseName, 'reps', '');
+                      }
+                    }}
+                  >
+                    Add Set
+                  </Button>
                 </AccordionContent>
               </AccordionItem>
             </Accordion>
 
-            {/* Today's Sets */}
+            {/* Exercise history */}
             <div>
-              <h4 className={`font-medium mb-2 ${isDarkMode ? 'text-zinc-100' : 'text-zinc-700'}`}>Today's Sets:</h4>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {data.sets
-                  .map((set, idx) => ({ ...set, idx }))
-                  .filter(set => set.date === new Date().toISOString().split('T')[0])
-                  .map((set) => (
-                    <SetItem
-                      key={set.idx}
-                      exerciseName={exerciseName}
-                      set={set}
-                      index={set.idx}
-                      deleteSetCallback={deleteSet}
-                      isDarkMode={isDarkMode}
-                    />
-                  ))}
+              <div className="grid grid-cols-3 gap-2">
+                {data.sets.map((set, index) => (
+                  <SetItem
+                    key={index}
+                    exerciseName={exerciseName}
+                    set={set}
+                    index={index}
+                    deleteSetCallback={deleteSet}
+                    isDarkMode={isDarkMode}
+                  />
+                ))}
               </div>
             </div>
 
-            {/* Progress Charts */}
-            <div>
-              <h4 className={`font-medium mb-2 ${isDarkMode ? 'text-zinc-100' : 'text-zinc-700'}`}>Progress</h4>
-              <div className="mt-4 space-y-6">
-                <div className="h-[300px]">
-                  <h4 className={`font-medium mb-2 ${isDarkMode ? 'text-zinc-100' : 'text-zinc-700'}`}>Max Weight Progress</h4>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={prepareWeightData(data.sets)}>
-                      <CartesianGrid strokeDasharray="3 3" stroke={isDarkMode ? '#3f3f46' : '#e4e4e7'} />
-                      <XAxis dataKey="date" stroke={isDarkMode ? '#a1a1aa' : '#71717a'} />
-                      <YAxis stroke={isDarkMode ? '#a1a1aa' : '#71717a'} />
-                      <Tooltip 
-                        contentStyle={{ 
-                          backgroundColor: isDarkMode ? '#27272a' : '#fafafa', 
-                          borderColor: isDarkMode ? '#3f3f46' : '#e4e4e7',
-                          color: isDarkMode ? '#f4f4f5' : '#27272a'
-                        }} 
-                      />
-                      <Line type="monotone" dataKey="weight" stroke={isDarkMode ? '#a1a1aa' : '#71717a'} dot={true} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-
-                <div className="h-[300px]">
-                  <h4 className={`font-medium mb-2 ${isDarkMode ? 'text-zinc-100' : 'text-zinc-700'}`}>Volume Progress</h4>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={data.dailyVolume}>
-                      <CartesianGrid strokeDasharray="3 3" stroke={isDarkMode ? '#3f3f46' : '#e4e4e7'} />
-                      <XAxis dataKey="date" stroke={isDarkMode ? '#a1a1aa' : '#71717a'} />
-                      <YAxis stroke={isDarkMode ? '#a1a1aa' : '#71717a'} />
-                      <Tooltip 
-                        contentStyle={{ 
-                          backgroundColor: isDarkMode ? '#27272a' : '#fafafa', 
-                          borderColor: isDarkMode ? '#3f3f46' : '#e4e4e7',
-                          color: isDarkMode ? '#f4f4f5' : '#27272a'
-                        }} 
-                      />
-                      <Line type="monotone" dataKey="volume" stroke={isDarkMode ? '#a1a1aa' : '#71717a'} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-            </div>
+            {/* Charts */}
+            <ExerciseCharts
+              weightData={data.sets.map(set => ({
+                date: set.date,
+                weight: parseFloat(set.weight)
+              }))}
+              volumeData={data.sets.map(set => ({
+                date: set.date,
+                volume: parseFloat(set.weight) * parseFloat(set.reps)
+              }))}
+              isDarkMode={isDarkMode}
+            />
           </div>
         </CardContent>
       </Card>
@@ -589,93 +643,92 @@ const GymTrackerV3 = () => {
         </TabsList>
 
         <TabsContent value="Overview">
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
-            <Card className={isDarkMode ? 'bg-zinc-800 border-zinc-700' : ''}>
-              <CardHeader>
-                <CardTitle className={isDarkMode ? 'text-zinc-100' : ''}>Workouts This Week</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className={`text-2xl font-bold ${isDarkMode ? 'text-zinc-100' : ''}`}>{metrics.workoutsThisWeek}</p>
-              </CardContent>
-            </Card>
-            <Card className={isDarkMode ? 'bg-zinc-800 border-zinc-700' : ''}>
-              <CardHeader>
-                <CardTitle className={isDarkMode ? 'text-zinc-100' : ''}>Workouts This Month</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className={`text-2xl font-bold ${isDarkMode ? 'text-zinc-100' : ''}`}>{metrics.workoutsThisMonth}</p>
-              </CardContent>
-            </Card>
-            <Card className={isDarkMode ? 'bg-zinc-800 border-zinc-700' : ''}>
-              <CardHeader>
-                <CardTitle className={isDarkMode ? 'text-zinc-100' : ''}>Total Exercises</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className={`text-2xl font-bold ${isDarkMode ? 'text-zinc-100' : ''}`}>{metrics.totalExercises}</p>
-              </CardContent>
-            </Card>
-            <Card className={isDarkMode ? 'bg-zinc-800 border-zinc-700' : ''}>
-              <CardHeader>
-                <CardTitle className={isDarkMode ? 'text-zinc-100' : ''}>Total Sets</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className={`text-2xl font-bold ${isDarkMode ? 'text-zinc-100' : ''}`}>{metrics.totalSets}</p>
-              </CardContent>
-            </Card>
-            <Card className={isDarkMode ? 'bg-zinc-800 border-zinc-700' : ''}>
-              <CardHeader>
-                <CardTitle className={isDarkMode ? 'text-zinc-100' : ''}>New PRs This Month</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className={`text-2xl font-bold ${isDarkMode ? 'text-zinc-100' : ''}`}>{metrics.newPRsThisMonth}</p>
-              </CardContent>
-            </Card>
-            <Card className={isDarkMode ? 'bg-zinc-800 border-zinc-700' : ''}>
-              <CardHeader>
-                <CardTitle className={isDarkMode ? 'text-zinc-100' : ''}>New PRs Past Month</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className={`text-2xl font-bold ${isDarkMode ? 'text-zinc-100' : ''}`}>{metrics.newPRsPastMonth}</p>
-              </CardContent>
-            </Card>
+          {/* First Part: Heatmaps and PR Tiles */}
+          <div className="w-full">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-4">
+                <WorkoutHeatmap
+                  workoutDates={Object.values(exercises).flatMap(exercise => 
+                    exercise.sets.map(set => set.date)
+                  )}
+                  startDate={getStartOfPreviousMonth()}
+                  endDate={getEndOfPreviousMonth()}
+                  isDarkMode={isDarkMode}
+                  isCurrentMonth={false}
+                />
+                <Card className={isDarkMode ? 'bg-zinc-800 border-zinc-700' : ''}>
+                  <CardHeader>
+                    <CardTitle className={isDarkMode ? 'text-zinc-100' : ''}>New PRs Past Month</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className={`text-2xl font-bold ${isDarkMode ? 'text-zinc-100' : ''}`}>{metrics.newPRsPastMonth}</p>
+                  </CardContent>
+                </Card>
+              </div>
+              <div className="space-y-4">
+                <WorkoutHeatmap
+                  workoutDates={Object.values(exercises).flatMap(exercise => 
+                    exercise.sets.map(set => set.date)
+                  )}
+                  startDate={getStartOfCurrentMonth()}
+                  endDate={getEndOfCurrentMonth()}
+                  isDarkMode={isDarkMode}
+                  isCurrentMonth={true}
+                />
+                <Card className={isDarkMode ? 'bg-zinc-800 border-zinc-700' : ''}>
+                  <CardHeader>
+                    <CardTitle className={isDarkMode ? 'text-zinc-100' : ''}>New PRs This Month</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className={`text-2xl font-bold ${isDarkMode ? 'text-zinc-100' : ''}`}>{metrics.newPRsThisMonth}</p>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
           </div>
-
-          {monthlyPRs.length > 0 && (
-            <Card className={isDarkMode ? 'mb-6 bg-zinc-800 border-zinc-700' : 'mb-6'}>
-              <CardHeader>
-                <CardTitle className={`flex items-center justify-between ${isDarkMode ? 'text-zinc-100' : ''}`}>
-                  <span>Monthly PRs</span>
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={() => setShowMonthlyPRList(!showMonthlyPRList)}
-                    className={isDarkMode ? 'hover:bg-zinc-700' : ''}
-                  >
-                    {showMonthlyPRList ? <ChevronUp /> : <ChevronDown />}
-                  </Button>
-                </CardTitle>
-              </CardHeader>
-              {showMonthlyPRList && (
-                <CardContent>
-                  <div className="space-y-2">
-                    {monthlyPRs.map((pr, idx) => (
-                      <div key={idx} className={`flex justify-between items-center border-b pb-2 ${
-                        isDarkMode ? 'border-zinc-700' : ''
-                      }`}>
-                        <span className={`font-medium ${isDarkMode ? 'text-zinc-100' : ''}`}>{pr.exerciseName}</span>
-                        <div className="flex items-center gap-2">
-                          <span className={isDarkMode ? 'text-zinc-100' : ''}>{pr.weight} kg</span>
-                          <span className="text-green-500">+{pr.surplus} kg</span>
+          
+          {/* Adding explicit margin/spacer to prevent overlap */}
+          <div className="h-24 w-full"></div>
+          
+          {/* Second Part: Monthly PRs List */}
+          <div className="w-full pt-12 mt-12">
+            {monthlyPRs.length > 0 && (
+              <Card className={isDarkMode ? 'bg-zinc-800 border-zinc-700' : ''}>
+                <CardHeader>
+                  <CardTitle className={`flex items-center justify-between ${isDarkMode ? 'text-zinc-100' : ''}`}>
+                    <span>Monthly PRs</span>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={() => setShowMonthlyPRList(!showMonthlyPRList)}
+                      className={isDarkMode ? 'hover:bg-zinc-700' : ''}
+                    >
+                      {showMonthlyPRList ? <ChevronUp /> : <ChevronDown />}
+                    </Button>
+                  </CardTitle>
+                </CardHeader>
+                {showMonthlyPRList && (
+                  <CardContent>
+                    <div className="space-y-2">
+                      {monthlyPRs.map((pr, idx) => (
+                        <div key={idx} className={`flex justify-between items-center border-b pb-2 ${
+                          isDarkMode ? 'border-zinc-700' : ''
+                        }`}>
+                          <span className={`font-medium ${isDarkMode ? 'text-zinc-100' : ''}`}>{pr.exerciseName}</span>
+                          <div className="flex items-center gap-2">
+                            <span className={isDarkMode ? 'text-zinc-100' : ''}>{pr.weight} kg</span>
+                            <span className="text-green-500">+{pr.surplus} kg</span>
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              )}
-            </Card>
-          )}
+                      ))}
+                    </div>
+                  </CardContent>
+                )}
+              </Card>
+            )}
+          </div>
         </TabsContent>
-
+        
         {['Push', 'Pull', 'Legs'].map((category) => (
           <TabsContent key={category} value={category}>
             <div className="mb-6">
@@ -708,6 +761,39 @@ const GymTrackerV3 = () => {
       >
         <Plus size={24} />
       </Button>
+
+      {/* Stopwatch Drawer */}
+      <Sheet>
+        <SheetTrigger asChild>
+          <Button
+            variant="default"
+            size="icon"
+            className={`fixed bottom-24 left-6 p-4 rounded-full shadow-lg ${
+              isDarkMode
+                ? 'bg-zinc-700 hover:bg-zinc-600'
+                : 'bg-zinc-800 hover:bg-zinc-700'
+            }`}
+            onClick={handleStopwatchOpen}
+          >
+            <Timer size={24} />
+          </Button>
+        </SheetTrigger>
+        <SheetContent side="left" className={isDarkMode ? 'bg-zinc-800 border-zinc-700' : 'bg-white'}>
+          <SheetHeader>
+            <SheetTitle className={isDarkMode ? 'text-zinc-100' : ''}>Rest Timer</SheetTitle>
+          </SheetHeader>
+          <div className="flex flex-col items-center justify-center h-full">
+            <div className={`text-6xl font-bold mb-4 ${
+              stopwatchTime >= 45 ? 'text-green-500' : isDarkMode ? 'text-zinc-100' : 'text-zinc-900'
+            }`}>
+              {formatTime(stopwatchTime)}
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {stopwatchTime >= 45 ? 'Rest complete!' : 'Rest in progress...'}
+            </p>
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {/* Dark Mode Toggle Button */}
       <Button 
