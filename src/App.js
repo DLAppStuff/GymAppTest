@@ -8,7 +8,7 @@ import {
   Tooltip,
   ResponsiveContainer
 } from 'recharts';
-import { Trophy, Plus, Download, Upload, ChevronDown, ChevronUp, X } from 'lucide-react';
+import { Trophy, Plus, Download, Upload, ChevronDown, ChevronUp, X, Moon, Sun } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "./components/ui/card";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "./components/ui/accordion";
@@ -42,7 +42,7 @@ const useLongPress = (callback = () => {}, ms = 800) => {
   };
 };
 
-const SetItem = ({ exerciseName, set, index, deleteSetCallback }) => {
+const SetItem = ({ exerciseName, set, index, deleteSetCallback, isDarkMode }) => {
   const longPressEvent = useLongPress(() => {
     const todayDate = new Date().toISOString().split('T')[0];
     if (set.date === todayDate) {
@@ -55,7 +55,11 @@ const SetItem = ({ exerciseName, set, index, deleteSetCallback }) => {
   }, 800);
 
   return (
-    <div {...longPressEvent} className="bg-white p-2 rounded border text-center">
+    <div {...longPressEvent} className={`p-2 rounded border text-center ${
+      isDarkMode 
+        ? 'bg-zinc-700 border-zinc-600 text-zinc-100 hover:bg-zinc-600' 
+        : 'bg-zinc-100 border-zinc-200 text-zinc-700 hover:bg-zinc-50'
+    }`}>
       {set.weight}kg x {set.reps}
     </div>
   );
@@ -68,6 +72,7 @@ const GymTrackerV3 = () => {
   const [showAddExerciseModal, setShowAddExerciseModal] = useState(false);
   const [newExercise, setNewExercise] = useState({ name: '', category: 'Push' });
   const [showMonthlyPRList, setShowMonthlyPRList] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(false);
   const [selectedExercises, setSelectedExercises] = useState({
     Push: '',
     Pull: '',
@@ -89,6 +94,15 @@ const GymTrackerV3 = () => {
       JSON.stringify({ exercises, prs })
     );
   }, [exercises, prs]);
+
+  // Add dark mode effect
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [isDarkMode]);
 
   // Date utility functions
   const getMondayOfCurrentWeek = () => {
@@ -363,14 +377,14 @@ const GymTrackerV3 = () => {
     const lastSet = [...data.sets].reverse().find(set => set.date === todayDate) || data.sets[data.sets.length - 1];
     
     return (
-      <Card key={exerciseName} className="mb-4">
-        <CardHeader>
+      <Card key={exerciseName} className={`mb-4 ${isDarkMode ? 'bg-zinc-800 border-zinc-700' : 'bg-white border-zinc-200'}`}>
+        <CardHeader className="pb-2">
           <div className="flex justify-between items-start">
             <div>
-              <CardTitle>{exerciseName}</CardTitle>
+              <CardTitle className={isDarkMode ? 'text-zinc-100' : 'text-zinc-800'}>{exerciseName}</CardTitle>
               {prs[exerciseName] && (
                 <CardDescription>
-                  <span className="text-yellow-600 flex items-center gap-1">
+                  <span className="text-amber-500 flex items-center gap-1">
                     <Trophy size={16} /> PR: {prs[exerciseName].weight} kg
                   </span>
                 </CardDescription>
@@ -380,16 +394,19 @@ const GymTrackerV3 = () => {
               variant="ghost" 
               size="icon"
               onClick={() => handleDeleteExercise(exerciseName)}
+              className={`${isDarkMode ? 'text-zinc-400 hover:text-zinc-300 hover:bg-zinc-700' : 'text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100'}`}
             >
               <X size={16} />
             </Button>
           </div>
         </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
+        <CardContent className="pt-0">
+          <div className="space-y-3">
             <Accordion type="single" collapsible defaultValue="add-set">
-              <AccordionItem value="add-set">
-                <AccordionTrigger>Add Set</AccordionTrigger>
+              <AccordionItem value="add-set" className={isDarkMode ? 'border-zinc-700' : 'border-zinc-200'}>
+                <AccordionTrigger className={isDarkMode ? 'hover:bg-zinc-700 text-zinc-100' : 'hover:bg-zinc-50 text-zinc-700'}>
+                  Add Set
+                </AccordionTrigger>
                 <AccordionContent>
                   <form onSubmit={(e) => {
                     e.preventDefault();
@@ -401,24 +418,58 @@ const GymTrackerV3 = () => {
                       formData.get('date')
                     );
                     e.target.reset();
-                    // Re-add the last weight after form reset
                     const weightInput = e.target.querySelector('input[name="weight"]');
                     if (weightInput) {
                       weightInput.value = formData.get('weight');
                     }
                   }}>
                     <div className="space-y-2">
-                      <input 
-                        type="number" 
-                        name="weight" 
-                        placeholder="Weight (kg)" 
-                        className="w-full p-2 border rounded" 
-                        defaultValue={lastSet?.weight || ''} 
-                        required 
-                      />
-                      <input type="number" name="reps" placeholder="Reps" className="w-full p-2 border rounded" required />
-                      <input type="date" name="date" defaultValue={todayDate} className="w-full p-2 border rounded" required />
-                      <Button type="submit" className="w-full">Add Set</Button>
+                      <div className="grid grid-cols-3 gap-2">
+                        <input 
+                          type="number" 
+                          name="weight" 
+                          placeholder="Weight (kg)" 
+                          className={`w-full p-2 border rounded ${
+                            isDarkMode 
+                              ? 'bg-zinc-700 border-zinc-600 text-zinc-100 placeholder:text-zinc-400 focus:border-zinc-500 focus:ring-zinc-500' 
+                              : 'bg-zinc-50 border-zinc-200 placeholder:text-zinc-400 focus:border-zinc-400 focus:ring-zinc-400'
+                          }`}
+                          defaultValue={lastSet?.weight || ''} 
+                          required 
+                        />
+                        <input 
+                          type="number" 
+                          name="reps" 
+                          placeholder="Reps" 
+                          className={`w-full p-2 border rounded ${
+                            isDarkMode 
+                              ? 'bg-zinc-700 border-zinc-600 text-zinc-100 placeholder:text-zinc-400 focus:border-zinc-500 focus:ring-zinc-500' 
+                              : 'bg-zinc-50 border-zinc-200 placeholder:text-zinc-400 focus:border-zinc-400 focus:ring-zinc-400'
+                          }`}
+                          required 
+                        />
+                        <input 
+                          type="date" 
+                          name="date" 
+                          defaultValue={todayDate} 
+                          className={`w-full p-2 border rounded ${
+                            isDarkMode 
+                              ? 'bg-zinc-700 border-zinc-600 text-zinc-100 focus:border-zinc-500 focus:ring-zinc-500' 
+                              : 'bg-zinc-50 border-zinc-200 text-zinc-700 focus:border-zinc-400 focus:ring-zinc-400'
+                          }`}
+                          required 
+                        />
+                      </div>
+                      <Button 
+                        type="submit" 
+                        className={`w-full ${
+                          isDarkMode 
+                            ? 'bg-zinc-700 hover:bg-zinc-600 text-zinc-100' 
+                            : 'bg-zinc-800 hover:bg-zinc-700 text-white'
+                        }`}
+                      >
+                        Add Set
+                      </Button>
                     </div>
                   </form>
                 </AccordionContent>
@@ -427,7 +478,7 @@ const GymTrackerV3 = () => {
 
             {/* Today's Sets */}
             <div>
-              <h4 className="font-medium mb-2">Today's Sets:</h4>
+              <h4 className={`font-medium mb-2 ${isDarkMode ? 'text-zinc-100' : 'text-zinc-700'}`}>Today's Sets:</h4>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {data.sets
                   .map((set, idx) => ({ ...set, idx }))
@@ -439,37 +490,50 @@ const GymTrackerV3 = () => {
                       set={set}
                       index={set.idx}
                       deleteSetCallback={deleteSet}
+                      isDarkMode={isDarkMode}
                     />
                   ))}
               </div>
             </div>
 
-            {/* Progress Charts - Always shown */}
+            {/* Progress Charts */}
             <div>
-              <h4 className="font-medium mb-2">Progress</h4>
+              <h4 className={`font-medium mb-2 ${isDarkMode ? 'text-zinc-100' : 'text-zinc-700'}`}>Progress</h4>
               <div className="mt-4 space-y-6">
                 <div className="h-[300px]">
-                  <h4 className="font-medium mb-2">Max Weight Progress</h4>
+                  <h4 className={`font-medium mb-2 ${isDarkMode ? 'text-zinc-100' : 'text-zinc-700'}`}>Max Weight Progress</h4>
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={prepareWeightData(data.sets)}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="date" />
-                      <YAxis />
-                      <Tooltip />
-                      <Line type="monotone" dataKey="weight" stroke="#8884d8" dot={true} />
+                      <CartesianGrid strokeDasharray="3 3" stroke={isDarkMode ? '#3f3f46' : '#e4e4e7'} />
+                      <XAxis dataKey="date" stroke={isDarkMode ? '#a1a1aa' : '#71717a'} />
+                      <YAxis stroke={isDarkMode ? '#a1a1aa' : '#71717a'} />
+                      <Tooltip 
+                        contentStyle={{ 
+                          backgroundColor: isDarkMode ? '#27272a' : '#fafafa', 
+                          borderColor: isDarkMode ? '#3f3f46' : '#e4e4e7',
+                          color: isDarkMode ? '#f4f4f5' : '#27272a'
+                        }} 
+                      />
+                      <Line type="monotone" dataKey="weight" stroke={isDarkMode ? '#a1a1aa' : '#71717a'} dot={true} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
 
                 <div className="h-[300px]">
-                  <h4 className="font-medium mb-2">Volume Progress</h4>
+                  <h4 className={`font-medium mb-2 ${isDarkMode ? 'text-zinc-100' : 'text-zinc-700'}`}>Volume Progress</h4>
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={data.dailyVolume}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="date" />
-                      <YAxis />
-                      <Tooltip />
-                      <Line type="monotone" dataKey="volume" stroke="#82ca9d" />
+                      <CartesianGrid strokeDasharray="3 3" stroke={isDarkMode ? '#3f3f46' : '#e4e4e7'} />
+                      <XAxis dataKey="date" stroke={isDarkMode ? '#a1a1aa' : '#71717a'} />
+                      <YAxis stroke={isDarkMode ? '#a1a1aa' : '#71717a'} />
+                      <Tooltip 
+                        contentStyle={{ 
+                          backgroundColor: isDarkMode ? '#27272a' : '#fafafa', 
+                          borderColor: isDarkMode ? '#3f3f46' : '#e4e4e7',
+                          color: isDarkMode ? '#f4f4f5' : '#27272a'
+                        }} 
+                      />
+                      <Line type="monotone" dataKey="volume" stroke={isDarkMode ? '#a1a1aa' : '#71717a'} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -482,14 +546,22 @@ const GymTrackerV3 = () => {
   };
 
   return (
-    <div className="p-4 max-w-6xl mx-auto">
+    <div className={`p-4 max-w-6xl mx-auto min-h-screen ${isDarkMode ? 'bg-zinc-900 text-zinc-100' : 'bg-zinc-50 text-zinc-900'}`}>
       <div className="flex justify-between items-center mb-4">
-        <h1 className="text-2xl font-bold">Enhanced Gym Tracker</h1>
+        <h1 className={`text-2xl font-bold ${isDarkMode ? 'text-zinc-100' : 'text-zinc-800'}`}>Enhanced Gym Tracker</h1>
         <div className="flex gap-2">
-          <Button variant="secondary" onClick={handleExport}>
+          <Button 
+            variant="outline" 
+            onClick={handleExport} 
+            className={isDarkMode ? 'bg-zinc-800 hover:bg-zinc-700 border-zinc-700' : 'bg-zinc-100 hover:bg-zinc-200 border-zinc-200'}
+          >
             <Download size={16} className="mr-2" /> Export
           </Button>
-          <Button variant="secondary" onClick={() => document.getElementById('import').click()}>
+          <Button 
+            variant="outline" 
+            onClick={() => document.getElementById('import').click()} 
+            className={isDarkMode ? 'bg-zinc-800 hover:bg-zinc-700 border-zinc-700' : 'bg-zinc-100 hover:bg-zinc-200 border-zinc-200'}
+          >
             <Upload size={16} className="mr-2" /> Import
           </Button>
           <input
@@ -503,9 +575,14 @@ const GymTrackerV3 = () => {
       </div>
 
       <Tabs defaultValue={currentTab} className="w-full">
-        <TabsList className="grid grid-cols-4">
+        <TabsList className={isDarkMode ? 'grid grid-cols-4 bg-zinc-800' : 'grid grid-cols-4 bg-zinc-100'}>
           {['Overview', 'Push', 'Pull', 'Legs'].map((tab) => (
-            <TabsTrigger key={tab} value={tab} onClick={() => setCurrentTab(tab)}>
+            <TabsTrigger 
+              key={tab} 
+              value={tab} 
+              onClick={() => setCurrentTab(tab)}
+              className={isDarkMode ? 'data-[state=active]:bg-zinc-700' : 'data-[state=active]:bg-zinc-200'}
+            >
               {tab}
             </TabsTrigger>
           ))}
@@ -513,65 +590,66 @@ const GymTrackerV3 = () => {
 
         <TabsContent value="Overview">
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
-            <Card>
+            <Card className={isDarkMode ? 'bg-zinc-800 border-zinc-700' : ''}>
               <CardHeader>
-                <CardTitle>Workouts This Week</CardTitle>
+                <CardTitle className={isDarkMode ? 'text-zinc-100' : ''}>Workouts This Week</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold">{metrics.workoutsThisWeek}</p>
+                <p className={`text-2xl font-bold ${isDarkMode ? 'text-zinc-100' : ''}`}>{metrics.workoutsThisWeek}</p>
               </CardContent>
             </Card>
-            <Card>
+            <Card className={isDarkMode ? 'bg-zinc-800 border-zinc-700' : ''}>
               <CardHeader>
-                <CardTitle>Workouts This Month</CardTitle>
+                <CardTitle className={isDarkMode ? 'text-zinc-100' : ''}>Workouts This Month</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold">{metrics.workoutsThisMonth}</p>
+                <p className={`text-2xl font-bold ${isDarkMode ? 'text-zinc-100' : ''}`}>{metrics.workoutsThisMonth}</p>
               </CardContent>
             </Card>
-            <Card>
+            <Card className={isDarkMode ? 'bg-zinc-800 border-zinc-700' : ''}>
               <CardHeader>
-                <CardTitle>Total Exercises</CardTitle>
+                <CardTitle className={isDarkMode ? 'text-zinc-100' : ''}>Total Exercises</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold">{metrics.totalExercises}</p>
+                <p className={`text-2xl font-bold ${isDarkMode ? 'text-zinc-100' : ''}`}>{metrics.totalExercises}</p>
               </CardContent>
             </Card>
-            <Card>
+            <Card className={isDarkMode ? 'bg-zinc-800 border-zinc-700' : ''}>
               <CardHeader>
-                <CardTitle>Total Sets</CardTitle>
+                <CardTitle className={isDarkMode ? 'text-zinc-100' : ''}>Total Sets</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold">{metrics.totalSets}</p>
+                <p className={`text-2xl font-bold ${isDarkMode ? 'text-zinc-100' : ''}`}>{metrics.totalSets}</p>
               </CardContent>
             </Card>
-            <Card>
+            <Card className={isDarkMode ? 'bg-zinc-800 border-zinc-700' : ''}>
               <CardHeader>
-                <CardTitle>New PRs This Month</CardTitle>
+                <CardTitle className={isDarkMode ? 'text-zinc-100' : ''}>New PRs This Month</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold">{metrics.newPRsThisMonth}</p>
+                <p className={`text-2xl font-bold ${isDarkMode ? 'text-zinc-100' : ''}`}>{metrics.newPRsThisMonth}</p>
               </CardContent>
             </Card>
-            <Card>
+            <Card className={isDarkMode ? 'bg-zinc-800 border-zinc-700' : ''}>
               <CardHeader>
-                <CardTitle>New PRs Past Month</CardTitle>
+                <CardTitle className={isDarkMode ? 'text-zinc-100' : ''}>New PRs Past Month</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold">{metrics.newPRsPastMonth}</p>
+                <p className={`text-2xl font-bold ${isDarkMode ? 'text-zinc-100' : ''}`}>{metrics.newPRsPastMonth}</p>
               </CardContent>
             </Card>
           </div>
 
           {monthlyPRs.length > 0 && (
-            <Card className="mb-6">
+            <Card className={isDarkMode ? 'mb-6 bg-zinc-800 border-zinc-700' : 'mb-6'}>
               <CardHeader>
-                <CardTitle className="flex items-center justify-between">
+                <CardTitle className={`flex items-center justify-between ${isDarkMode ? 'text-zinc-100' : ''}`}>
                   <span>Monthly PRs</span>
                   <Button 
                     variant="ghost" 
                     size="sm" 
                     onClick={() => setShowMonthlyPRList(!showMonthlyPRList)}
+                    className={isDarkMode ? 'hover:bg-zinc-700' : ''}
                   >
                     {showMonthlyPRList ? <ChevronUp /> : <ChevronDown />}
                   </Button>
@@ -581,10 +659,12 @@ const GymTrackerV3 = () => {
                 <CardContent>
                   <div className="space-y-2">
                     {monthlyPRs.map((pr, idx) => (
-                      <div key={idx} className="flex justify-between items-center border-b pb-2">
-                        <span className="font-medium">{pr.exerciseName}</span>
+                      <div key={idx} className={`flex justify-between items-center border-b pb-2 ${
+                        isDarkMode ? 'border-zinc-700' : ''
+                      }`}>
+                        <span className={`font-medium ${isDarkMode ? 'text-zinc-100' : ''}`}>{pr.exerciseName}</span>
                         <div className="flex items-center gap-2">
-                          <span>{pr.weight} kg</span>
+                          <span className={isDarkMode ? 'text-zinc-100' : ''}>{pr.weight} kg</span>
                           <span className="text-green-500">+{pr.surplus} kg</span>
                         </div>
                       </div>
@@ -623,17 +703,31 @@ const GymTrackerV3 = () => {
       <Button 
         variant="default" 
         size="icon" 
-        className="fixed bottom-6 right-6 p-4 rounded-full shadow-lg"
+        className="fixed bottom-6 right-6 p-4 rounded-full shadow-lg bg-zinc-800 hover:bg-zinc-700"
         onClick={() => setShowAddExerciseModal(true)}
       >
         <Plus size={24} />
       </Button>
 
+      {/* Dark Mode Toggle Button */}
+      <Button 
+        variant="default" 
+        size="icon" 
+        className={`fixed bottom-6 left-6 p-4 rounded-full shadow-lg ${
+          isDarkMode 
+            ? 'bg-zinc-700 hover:bg-zinc-600' 
+            : 'bg-zinc-800 hover:bg-zinc-700'
+        }`}
+        onClick={() => setIsDarkMode(!isDarkMode)}
+      >
+        {isDarkMode ? <Sun size={24} /> : <Moon size={24} />}
+      </Button>
+
       {showAddExerciseModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
-          <Card className="w-full max-w-md">
+          <Card className={isDarkMode ? 'w-full max-w-md bg-zinc-800 border-zinc-700' : 'w-full max-w-md'}>
             <CardHeader>
-              <CardTitle>Add New Exercise</CardTitle>
+              <CardTitle className={isDarkMode ? 'text-zinc-100' : ''}>Add New Exercise</CardTitle>
             </CardHeader>
             <CardContent>
               <form onSubmit={(e) => {
@@ -643,12 +737,20 @@ const GymTrackerV3 = () => {
                 <input
                   type="text"
                   placeholder="Exercise Name"
-                  className="w-full p-2 border rounded mb-4"
+                  className={`w-full p-2 border rounded mb-4 ${
+                    isDarkMode 
+                      ? 'bg-zinc-700 border-zinc-600 text-zinc-100 placeholder:text-zinc-400' 
+                      : 'bg-white border-zinc-200'
+                  }`}
                   value={newExercise.name}
                   onChange={(e) => setNewExercise(prev => ({ ...prev, name: e.target.value }))}
                 />
                 <select
-                  className="w-full p-2 border rounded mb-4"
+                  className={`w-full p-2 border rounded mb-4 ${
+                    isDarkMode 
+                      ? 'bg-zinc-700 border-zinc-600 text-zinc-100' 
+                      : 'bg-white border-zinc-200'
+                  }`}
                   value={newExercise.category}
                   onChange={(e) => setNewExercise(prev => ({ ...prev, category: e.target.value }))}
                 >
@@ -657,8 +759,13 @@ const GymTrackerV3 = () => {
                   <option value="Legs">Legs</option>
                 </select>
                 <div className="flex gap-2">
-                  <Button type="submit" className="flex-1">Add</Button>
-                  <Button type="button" variant="outline" className="flex-1" onClick={() => setShowAddExerciseModal(false)}>
+                  <Button type="submit" className={`flex-1 ${isDarkMode ? 'bg-zinc-700 hover:bg-zinc-600' : ''}`}>Add</Button>
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    className={`flex-1 ${isDarkMode ? 'border-zinc-600 hover:bg-zinc-700' : ''}`} 
+                    onClick={() => setShowAddExerciseModal(false)}
+                  >
                     Cancel
                   </Button>
                 </div>
