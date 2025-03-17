@@ -18,9 +18,29 @@ const WorkoutHeatmap = ({ workoutDates, startDate, endDate, isDarkMode, isCurren
   const firstDayOfMonth = getFirstDayOfMonth(startDate);
   const daysInMonth = getDaysInMonth(startDate);
 
+  // Create a Set of unique workout dates for efficient lookup
+  const createWorkoutDatesSet = () => {
+    // Create a map to count occurrences of each date
+    const dateMap = {};
+    
+    // Count each date occurrence
+    workoutDates.forEach(dateStr => {
+      if (!dateStr) return; // Skip empty dates
+      
+      // Normalize the date string format to YYYY-MM-DD
+      // Use the date string directly if it's already in YYYY-MM-DD format
+      const normalizedDate = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
+      dateMap[normalizedDate] = (dateMap[normalizedDate] || 0) + 1;
+    });
+    
+    // Return a Set of dates that have at least one workout
+    return new Set(Object.keys(dateMap));
+  };
+
+  const workoutDatesSet = createWorkoutDatesSet();
+
   const generateDays = () => {
     const days = [];
-    const workoutDatesSet = new Set(workoutDates);
 
     // Add empty cells for proper alignment
     for (let i = 0; i < firstDayOfMonth; i++) {
@@ -35,11 +55,22 @@ const WorkoutHeatmap = ({ workoutDates, startDate, endDate, isDarkMode, isCurren
     // Always generate 31 days
     for (let i = 1; i <= 31; i++) {
       const isValidDate = i <= daysInMonth;
-      const currentDate = new Date(startDate.getFullYear(), startDate.getMonth(), i);
-      const dateString = currentDate.toISOString().split('T')[0];
+      
+      // Create date string in YYYY-MM-DD format directly without using Date object
+      // This avoids timezone issues
+      const year = startDate.getFullYear();
+      const month = String(startDate.getMonth() + 1).padStart(2, '0');
+      const day = String(i).padStart(2, '0');
+      const dateString = `${year}-${month}-${day}`;
+      
+      // Check if this date has a workout
       const isWorkoutDay = workoutDatesSet.has(dateString);
-      // Only show as workout day if it's in the past or today and is a valid date for this month
-      const shouldShowAsWorkout = isWorkoutDay && currentDate <= today && isValidDate;
+      
+      // Create a Date object for display/comparison purposes only
+      const currentDate = new Date(year, startDate.getMonth(), i);
+      
+      // Only show as workout day if it's a valid date for this month
+      const shouldShowAsWorkout = isWorkoutDay && isValidDate;
 
       days.push(
         <div

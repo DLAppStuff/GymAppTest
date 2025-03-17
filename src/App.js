@@ -311,15 +311,18 @@ const GymTrackerV3 = () => {
     }
   };
 
-  const handleAddSet = (exerciseName, weight, reps, date = new Date().toISOString()) => {
+  const handleAddSet = (exerciseName, weight, reps, date = new Date().toISOString().split('T')[0]) => {
+    // Ensure date is in YYYY-MM-DD format
+    const formattedDate = date.includes('T') ? date.split('T')[0] : date;
+    
     setExercises((prev) => {
       const exercise = prev[exerciseName];
-      const newSet = { weight: Number(weight), reps: Number(reps), date };
+      const newSet = { weight: Number(weight), reps: Number(reps), date: formattedDate };
       const newSets = [...(exercise.sets || []), newSet];
       
       // Calculate daily volume
       const dailyVolume = newSets
-        .filter((s) => s.date === date)
+        .filter((s) => s.date === formattedDate)
         .reduce((total, s) => total + s.weight * s.reps, 0);
 
       // Update PR if necessary
@@ -327,23 +330,23 @@ const GymTrackerV3 = () => {
         setPRs((prevPRs) => ({
           ...prevPRs,
           [exerciseName]: { 
-            weight, 
-            date,
-            previousWeight: prs[exerciseName]?.weight || 0
+            weight: Number(Number(weight).toFixed(2)), 
+            date: formattedDate,
+            previousWeight: prs[exerciseName]?.weight ? Number(Number(prs[exerciseName].weight).toFixed(2)) : 0
           }
         }));
       }
 
       // Update or insert daily volume
       const existingVolumeIndex = exercise.dailyVolume?.findIndex(
-        (v) => v.date === date
+        (v) => v.date === formattedDate
       );
 
       let updatedDailyVolume = exercise.dailyVolume || [];
       if (existingVolumeIndex !== -1) {
         updatedDailyVolume[existingVolumeIndex].volume = dailyVolume;
       } else {
-        updatedDailyVolume.push({ date, volume: dailyVolume });
+        updatedDailyVolume.push({ date: formattedDate, volume: dailyVolume });
       }
 
       return {
@@ -422,7 +425,7 @@ const GymTrackerV3 = () => {
     .map(([exerciseName, record]) => ({
       exerciseName,
       weight: record.weight,
-      surplus: record.previousWeight ? (record.weight - record.previousWeight) : 0
+      surplus: record.previousWeight ? Number((record.weight - record.previousWeight).toFixed(2)) : 0
     }));
 
   // Prepare exercise options for each category
@@ -504,7 +507,7 @@ const GymTrackerV3 = () => {
               {prs[exerciseName] && (
                 <CardDescription>
                   <span className="text-amber-500 flex items-center gap-1">
-                    <Trophy size={16} /> PR: {prs[exerciseName].weight} kg
+                    <Trophy size={16} /> PR: {Number(prs[exerciseName].weight)} kg
                   </span>
                 </CardDescription>
               )}
@@ -713,9 +716,20 @@ const GymTrackerV3 = () => {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-4">
                 <WorkoutHeatmap
-                  workoutDates={Object.values(exercises).flatMap(exercise => 
-                    exercise.sets.map(set => set.date)
-                  )}
+                  workoutDates={Object.values(exercises)
+                    .flatMap(exercise => exercise.sets)
+                    .filter(set => {
+                      // Get the date parts directly from the date string
+                      const [year, month, day] = set.date.split('-').map(Number);
+                      const prevMonthStart = getStartOfPreviousMonth();
+                      const prevMonthEnd = getEndOfPreviousMonth();
+                      
+                      // Create a date using local timezone
+                      const setDate = new Date(year, month - 1, day);
+                      return setDate >= prevMonthStart && setDate <= prevMonthEnd;
+                    })
+                    .map(set => set.date)
+                  }
                   startDate={getStartOfPreviousMonth()}
                   endDate={getEndOfPreviousMonth()}
                   isDarkMode={isDarkMode}
@@ -732,9 +746,20 @@ const GymTrackerV3 = () => {
               </div>
               <div className="space-y-4">
                 <WorkoutHeatmap
-                  workoutDates={Object.values(exercises).flatMap(exercise => 
-                    exercise.sets.map(set => set.date)
-                  )}
+                  workoutDates={Object.values(exercises)
+                    .flatMap(exercise => exercise.sets)
+                    .filter(set => {
+                      // Get the date parts directly from the date string
+                      const [year, month, day] = set.date.split('-').map(Number);
+                      const currentMonthStart = getStartOfCurrentMonth();
+                      const currentMonthEnd = getEndOfCurrentMonth();
+                      
+                      // Create a date using local timezone
+                      const setDate = new Date(year, month - 1, day);
+                      return setDate >= currentMonthStart && setDate <= currentMonthEnd;
+                    })
+                    .map(set => set.date)
+                  }
                   startDate={getStartOfCurrentMonth()}
                   endDate={getEndOfCurrentMonth()}
                   isDarkMode={isDarkMode}
@@ -776,8 +801,8 @@ const GymTrackerV3 = () => {
                         }`}>
                           <span className={`font-medium ${isDarkMode ? 'text-zinc-100' : ''}`}>{pr.exerciseName}</span>
                           <div className="flex items-center gap-2">
-                            <span className={isDarkMode ? 'text-zinc-100' : ''}>{pr.weight} kg</span>
-                            <span className="text-green-500">+{pr.surplus} kg</span>
+                            <span className={isDarkMode ? 'text-zinc-100' : ''}>{Number(pr.weight)} kg</span>
+                            <span className="text-green-500">+{Number(pr.surplus)} kg</span>
                           </div>
                         </div>
                       ))}
