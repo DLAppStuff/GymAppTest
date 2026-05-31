@@ -381,7 +381,7 @@ const GymTrackerV3 = () => {
   };
 
   const handleExport = () => {
-    const dataStr = JSON.stringify({ exercises, prs }, null, 2);
+    const dataStr = JSON.stringify({ exercises, prs, bodyWeights }, null, 2);
     const blob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
