@@ -1,4 +1,15 @@
-# Getting Started with Create React App
+# GymGenius
+
+A personal gym progress tracker. Data syncs to Supabase (Postgres) with
+email/password login and deploys on Vercel.
+
+➡️ **Setup / migration instructions:** see
+[`SETUP_SUPABASE_VERCEL.md`](SETUP_SUPABASE_VERCEL.md).
+
+Copy `.env.local.example` to `.env.local` with your Supabase keys to enable
+sync; without those vars the app runs in local-only (localStorage) mode.
+
+---
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 

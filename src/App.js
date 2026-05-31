@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Trophy, Plus, Download, Upload, ChevronDown, ChevronUp, X, Moon, Sun, Timer } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "./components/ui/card";
@@ -18,6 +18,9 @@ import {
 } from "./components/ui/sheet";
 import "./styles/globals.css";
 import { format } from 'date-fns';
+import Auth from './components/Auth';
+import { supabase, isSupabaseConfigured } from './lib/supabase';
+import { loadData, saveData } from './lib/storage';
 
 // Long press hook from the old version
 const useLongPress = (callback = () => {}, ms = 800) => {
@@ -68,7 +71,7 @@ const SetItem = ({ exerciseName, set, index, deleteSetCallback, isDarkMode }) =>
   );
 };
 
-const GymTrackerV3 = () => {
+const GymTrackerV3 = ({ userId, onSignOut }) => {
   const [exercises, setExercises] = useState({});
   const [prs, setPRs] = useState({});
   const [currentTab, setCurrentTab] = useState('Overview');
@@ -89,11 +92,11 @@ const GymTrackerV3 = () => {
   // Add state for input values
   const [inputValues, setInputValues] = useState({});
 
-  // Add body weight tracking states
-  const [bodyWeights, setBodyWeights] = useState(() => {
-    const saved = localStorage.getItem('bodyWeights');
-    return saved ? JSON.parse(saved) : [];
-  });
+  // Body weight entries are hydrated from storage (local or cloud) on load.
+  const [bodyWeights, setBodyWeights] = useState([]);
+  // Guards the save effect so we don't overwrite stored data with the empty
+  // initial state before loadData() has populated it.
+  const hydratedRef = useRef(false);
 
   const [newWeight, setNewWeight] = useState('');
   const [weightDate, setWeightDate] = useState(new Date().toISOString().split('T')[0]);
@@ -154,21 +157,21 @@ const GymTrackerV3 = () => {
     }
   };
 
+  // Load saved data (cloud when signed in, otherwise local cache) on mount.
   useEffect(() => {
-    const savedData = localStorage.getItem('gymProgress_v3');
-    if (savedData) {
-      const { exercises: savedExercises, prs: savedPRs } = JSON.parse(savedData);
-      setExercises(savedExercises);
-      setPRs(savedPRs);
-    }
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem(
-      'gymProgress_v3',
-      JSON.stringify({ exercises, prs })
-    );
-  }, [exercises, prs]);
+    let active = true;
+    (async () => {
+      const data = await loadData(userId);
+      if (!active) return;
+      setExercises(data.exercises);
+      setPRs(data.prs);
+      setBodyWeights(data.bodyWeights);
+      hydratedRef.current = true;
+    })();
+    return () => {
+      active = false;
+    };
+  }, [userId]);
 
   // Add dark mode effect
   useEffect(() => {
@@ -179,10 +182,13 @@ const GymTrackerV3 = () => {
     }
   }, [isDarkMode]);
 
-  // Add body weight tracking effect
+  // Persist all data (debounced) whenever it changes — to the cloud when
+  // signed in, and always to the local cache for offline use. Skipped until
+  // the initial load has hydrated state so we never clobber stored data.
   useEffect(() => {
-    localStorage.setItem('bodyWeights', JSON.stringify(bodyWeights));
-  }, [bodyWeights]);
+    if (!hydratedRef.current) return;
+    saveData(userId, { exercises, prs, bodyWeights });
+  }, [exercises, prs, bodyWeights, userId]);
 
   // Date utility functions
   const getMondayOfCurrentWeek = () => {
@@ -381,7 +387,7 @@ const GymTrackerV3 = () => {
   };
 
   const handleExport = () => {
-    const dataStr = JSON.stringify({ exercises, prs }, null, 2);
+    const dataStr = JSON.stringify({ exercises, prs, bodyWeights }, null, 2);
     const blob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -401,6 +407,9 @@ const GymTrackerV3 = () => {
           if (data.exercises && data.prs) {
             setExercises(data.exercises);
             setPRs(data.prs);
+            if (Array.isArray(data.bodyWeights)) {
+              setBodyWeights(data.bodyWeights);
+            }
             alert('Data imported successfully!');
           } else {
             alert('Invalid data format. Make sure it has { exercises, prs }.');
@@ -693,6 +702,15 @@ const GymTrackerV3 = () => {
             accept=".json"
             onChange={handleImport}
           />
+          {onSignOut && (
+            <Button
+              variant="outline"
+              onClick={onSignOut}
+              className={isDarkMode ? 'bg-zinc-800 hover:bg-zinc-700 border-zinc-700' : 'bg-zinc-100 hover:bg-zinc-200 border-zinc-200'}
+            >
+              Sign Out
+            </Button>
+          )}
         </div>
       </div>
 
@@ -1084,4 +1102,45 @@ const GymTrackerV3 = () => {
   );
 };
 
-export default GymTrackerV3;
+// Top-level wrapper: manages the Supabase auth session and decides whether to
+// show the login screen or the tracker. With no Supabase env vars it runs in
+// local-only mode (no auth) so the app still works on a bare clone.
+const App = () => {
+  const [session, setSession] = useState(undefined); // undefined = still loading
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) {
+      setSession(null);
+      return;
+    }
+    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, s) => {
+      setSession(s);
+    });
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  // Local-only mode: no auth gate, data lives in localStorage.
+  if (!isSupabaseConfigured) {
+    return <GymTrackerV3 userId={null} onSignOut={null} />;
+  }
+
+  if (session === undefined) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-zinc-900 text-zinc-100">
+        Loading…
+      </div>
+    );
+  }
+
+  if (!session) return <Auth />;
+
+  return (
+    <GymTrackerV3
+      userId={session.user.id}
+      onSignOut={() => supabase.auth.signOut()}
+    />
+  );
+};
+
+export default App;
