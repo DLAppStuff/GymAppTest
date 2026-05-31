@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Trophy, Plus, Download, Upload, ChevronDown, ChevronUp, X, Moon, Sun, Timer } from 'lucide-react';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "./components/ui/tabs";
+import { Trophy, Plus, Download, Upload, ChevronDown, ChevronUp, X, Moon, Sun, Timer, LogOut } from 'lucide-react';
+import { Tabs, TabsContent } from "./components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "./components/ui/card";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "./components/ui/accordion";
 import { Button } from "./components/ui/button";
@@ -9,6 +9,9 @@ import { Label } from "./components/ui/label";
 import { Input } from "./components/ui/input";
 import ExerciseCharts from './components/ExerciseCharts';
 import WorkoutHeatmap from './components/WorkoutHeatmap';
+import StatsHero from './components/StatsHero';
+import BottomNav from './components/BottomNav';
+import CategoryBalance from './components/CategoryBalance';
 import {
   Sheet,
   SheetContent,
@@ -241,10 +244,13 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
 
     const workoutDatesThisWeek = new Set();
     const workoutDatesThisMonth = new Set();
+    // Sets logged per category this month, so the user can spot a neglected
+    // category (e.g. skipping Legs).
+    const setsByCategoryThisMonth = { Push: 0, Pull: 0, Legs: 0 };
 
     Object.keys(exercises).forEach((exerciseName) => {
       totalExercises += 1;
-      const { sets } = exercises[exerciseName];
+      const { sets, category } = exercises[exerciseName];
       totalSets += sets.length;
       sets.forEach(({ date }) => {
         const setDate = new Date(date);
@@ -253,6 +259,9 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
         }
         if (setDate >= monthStart && setDate <= monthEnd) {
           workoutDatesThisMonth.add(date);
+          if (setsByCategoryThisMonth[category] !== undefined) {
+            setsByCategoryThisMonth[category] += 1;
+          }
         }
       });
     });
@@ -273,7 +282,8 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
       totalExercises,
       totalSets,
       newPRsThisMonth,
-      newPRsPastMonth
+      newPRsPastMonth,
+      setsByCategoryThisMonth
     };
   };
 
@@ -677,58 +687,23 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
   };
 
   return (
-    <div className={`p-4 max-w-6xl mx-auto min-h-screen ${isDarkMode ? 'bg-zinc-900 text-zinc-100' : 'bg-zinc-50 text-zinc-900'}`}>
+    <div className={`p-4 max-w-6xl mx-auto min-h-screen content-pad-bottom ${isDarkMode ? 'app-bg-dark text-zinc-100' : 'app-bg-light text-zinc-900'}`}>
+      <input
+        type="file"
+        id="import"
+        className="hidden"
+        accept=".json"
+        onChange={handleImport}
+      />
       <div className="flex justify-between items-center mb-4">
-        <h1 className={`text-2xl font-bold ${isDarkMode ? 'text-zinc-100' : 'text-zinc-800'}`}>GymGenius</h1>
-        <div className="flex gap-2">
-          <Button 
-            variant="outline" 
-            onClick={handleExport} 
-            className={isDarkMode ? 'bg-zinc-800 hover:bg-zinc-700 border-zinc-700' : 'bg-zinc-100 hover:bg-zinc-200 border-zinc-200'}
-          >
-            <Download size={16} className="mr-2" /> Export
-          </Button>
-          <Button 
-            variant="outline" 
-            onClick={() => document.getElementById('import').click()} 
-            className={isDarkMode ? 'bg-zinc-800 hover:bg-zinc-700 border-zinc-700' : 'bg-zinc-100 hover:bg-zinc-200 border-zinc-200'}
-          >
-            <Upload size={16} className="mr-2" /> Import
-          </Button>
-          <input
-            type="file"
-            id="import"
-            className="hidden"
-            accept=".json"
-            onChange={handleImport}
-          />
-          {onSignOut && (
-            <Button
-              variant="outline"
-              onClick={onSignOut}
-              className={isDarkMode ? 'bg-zinc-800 hover:bg-zinc-700 border-zinc-700' : 'bg-zinc-100 hover:bg-zinc-200 border-zinc-200'}
-            >
-              Sign Out
-            </Button>
-          )}
-        </div>
+        <h1 className="text-xl font-bold tracking-tight">
+          Gym<span className="text-brand">Genius</span>
+        </h1>
       </div>
 
-      <Tabs defaultValue={currentTab} className="w-full">
-        <TabsList className={isDarkMode ? 'grid grid-cols-4 bg-zinc-800' : 'grid grid-cols-4 bg-zinc-100'}>
-          {['Overview', 'Push', 'Pull', 'Legs'].map((tab) => (
-            <TabsTrigger 
-              key={tab} 
-              value={tab} 
-              onClick={() => setCurrentTab(tab)}
-              className={isDarkMode ? 'data-[state=active]:bg-zinc-700' : 'data-[state=active]:bg-zinc-200'}
-            >
-              {tab}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-
+      <Tabs value={currentTab} onValueChange={setCurrentTab} className="w-full">
         <TabsContent value="Overview">
+          <StatsHero metrics={metrics} />
           {/* First Part: Heatmaps and PR Tiles */}
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
@@ -793,7 +768,14 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
                 </Card>
               </div>
             </div>
-          
+
+            {/* Monthly Push/Pull/Legs balance */}
+            <CategoryBalance
+              counts={metrics.setsByCategoryThisMonth}
+              monthLabel={monthStart.toLocaleString('default', { month: 'long' })}
+              isDarkMode={isDarkMode}
+            />
+
             {/* Monthly PRs List */}
             {monthlyPRs.length > 0 && (
               <Card className={isDarkMode ? 'bg-zinc-800 border-zinc-700' : ''}>
@@ -984,10 +966,53 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
             )}
           </TabsContent>
         ))}
+
+        <TabsContent value="More">
+          <div className="space-y-4">
+            <Card className={isDarkMode ? 'bg-zinc-800 border-zinc-700' : ''}>
+              <CardHeader>
+                <CardTitle className={`text-base ${isDarkMode ? 'text-zinc-100' : ''}`}>Appearance</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Button variant="outline" className="w-full justify-start" onClick={() => setIsDarkMode(!isDarkMode)}>
+                  {isDarkMode ? <Sun size={16} className="mr-2" /> : <Moon size={16} className="mr-2" />}
+                  {isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+                </Button>
+              </CardContent>
+            </Card>
+
+            <Card className={isDarkMode ? 'bg-zinc-800 border-zinc-700' : ''}>
+              <CardHeader>
+                <CardTitle className={`text-base ${isDarkMode ? 'text-zinc-100' : ''}`}>Data</CardTitle>
+              </CardHeader>
+              <CardContent className="grid grid-cols-2 gap-2">
+                <Button variant="outline" className="justify-start" onClick={handleExport}>
+                  <Download size={16} className="mr-2" /> Export
+                </Button>
+                <Button variant="outline" className="justify-start" onClick={() => document.getElementById('import').click()}>
+                  <Upload size={16} className="mr-2" /> Import
+                </Button>
+              </CardContent>
+            </Card>
+
+            {onSignOut && (
+              <Card className={isDarkMode ? 'bg-zinc-800 border-zinc-700' : ''}>
+                <CardHeader>
+                  <CardTitle className={`text-base ${isDarkMode ? 'text-zinc-100' : ''}`}>Account</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Button variant="outline" className="w-full justify-start" onClick={onSignOut}>
+                    <LogOut size={16} className="mr-2" /> Sign out
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </TabsContent>
       </Tabs>
 
       {showAddExerciseModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
           <Card className={isDarkMode ? 'w-full max-w-md bg-zinc-800 border-zinc-700' : 'w-full max-w-md'}>
             <CardHeader>
               <CardTitle className={isDarkMode ? 'text-zinc-100' : ''}>Add New Exercise</CardTitle>
@@ -1038,34 +1063,21 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
         </div>
       )}
 
-      {/* Replace the floating buttons with a fixed bottom bar */}
-      <div className="fixed bottom-4 left-0 right-0 flex justify-center items-center gap-4 z-50">
-        <Button 
-          variant="default" 
-          size="icon" 
-          className={`w-10 h-10 rounded-full shadow-lg ${
-            isDarkMode 
-              ? 'bg-zinc-700 hover:bg-zinc-600' 
-              : 'bg-zinc-800 hover:bg-zinc-700'
-          }`}
-          onClick={() => setIsDarkMode(!isDarkMode)}
-        >
-          {isDarkMode ? <Sun size={20} className="text-white" /> : <Moon size={20} className="text-white" />}
-        </Button>
-
+      {/* Floating action buttons, stacked just above the bottom nav */}
+      <div
+        className="fixed right-4 z-40 flex flex-col items-center gap-3"
+        style={{ bottom: 'calc(5rem + env(safe-area-inset-bottom, 0px))' }}
+      >
         <Sheet>
           <SheetTrigger asChild>
             <Button
               variant="default"
               size="icon"
-              className={`w-10 h-10 rounded-full shadow-lg ${
-                isDarkMode
-                  ? 'bg-zinc-700 hover:bg-zinc-600'
-                  : 'bg-zinc-800 hover:bg-zinc-700'
-              }`}
+              className="h-12 w-12 rounded-full bg-brand text-white shadow-lg shadow-brand/30 hover:bg-brand/90"
               onClick={handleStopwatchOpen}
+              aria-label="Rest timer"
             >
-              <Timer size={20} className={isDarkMode ? 'text-white' : ''} />
+              <Timer size={20} />
             </Button>
           </SheetTrigger>
           <SheetContent side="left" className={isDarkMode ? 'bg-zinc-800 border-zinc-700' : 'bg-white'}>
@@ -1085,19 +1097,18 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
           </SheetContent>
         </Sheet>
 
-        <Button 
-          variant="default" 
-          size="icon" 
-          className={`w-10 h-10 rounded-full shadow-lg ${
-            isDarkMode 
-              ? 'bg-zinc-700 hover:bg-zinc-600' 
-              : 'bg-zinc-800 hover:bg-zinc-700'
-          }`}
+        <Button
+          variant="default"
+          size="icon"
+          className="h-14 w-14 rounded-full bg-brand text-white shadow-xl shadow-brand/40 hover:bg-brand/90"
           onClick={() => setShowAddExerciseModal(true)}
+          aria-label="Add exercise"
         >
-          <Plus size={20} className={isDarkMode ? 'text-white' : ''} />
+          <Plus size={24} />
         </Button>
       </div>
+
+      <BottomNav currentTab={currentTab} onChange={setCurrentTab} />
     </div>
   );
 };
@@ -1127,7 +1138,7 @@ const App = () => {
 
   if (session === undefined) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-zinc-900 text-zinc-100">
+      <div className="min-h-screen flex items-center justify-center app-bg-dark text-zinc-100">
         Loading…
       </div>
     );

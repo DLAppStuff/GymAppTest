@@ -77,13 +77,13 @@ const WorkoutHeatmap = ({ workoutDates, startDate, endDate, isDarkMode, isCurren
           key={i}
           className={`aspect-square flex items-center justify-center rounded-lg transition-all duration-200 hover:scale-105 ${
             shouldShowAsWorkout
-              ? 'bg-[#2a7d93] hover:bg-[#246d81] shadow-sm'
+              ? 'bg-brand hover:bg-brand/90 shadow-sm shadow-brand/30'
               : isDarkMode
               ? 'bg-zinc-800 hover:bg-zinc-700'
               : 'bg-zinc-100 hover:bg-zinc-200'
           } ${
             currentDate.toDateString() === today.toDateString() && isValidDate
-              ? 'ring-2 ring-blue-400'
+              ? 'ring-2 ring-brand/60'
               : ''
           }`}
         >
@@ -113,9 +113,9 @@ const WorkoutHeatmap = ({ workoutDates, startDate, endDate, isDarkMode, isCurren
       </CardHeader>
       <CardContent className="pt-2">
         <div className="grid grid-cols-7 gap-1 text-xs">
-          {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map(day => (
-            <div 
-              key={day} 
+          {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((day, i) => (
+            <div
+              key={i}
               className={`text-center font-medium ${isDarkMode ? 'text-zinc-400' : 'text-zinc-600'}`}
             >
               {day}
