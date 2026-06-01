@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Trophy, Plus, Download, Upload, ChevronDown, ChevronUp, X, Moon, Sun, Timer, LogOut } from 'lucide-react';
+import { Trophy, Plus, Download, Upload, ChevronDown, ChevronUp, X, Moon, Sun, Timer, LogOut, Settings, Activity } from 'lucide-react';
 import { Tabs, TabsContent } from "./components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "./components/ui/card";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "./components/ui/accordion";
@@ -12,6 +12,8 @@ import WorkoutHeatmap from './components/WorkoutHeatmap';
 import StatsHero from './components/StatsHero';
 import BottomNav from './components/BottomNav';
 import CategoryBalance from './components/CategoryBalance';
+import RunningStats from './components/RunningStats';
+import MonthlyTrends from './components/MonthlyTrends';
 import {
   Sheet,
   SheetContent,
@@ -97,6 +99,14 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
 
   // Body weight entries are hydrated from storage (local or cloud) on load.
   const [bodyWeights, setBodyWeights] = useState([]);
+  // Running efforts: { date, distanceKm, durationSec }. Pace is always derived.
+  const [runs, setRuns] = useState([]);
+  const [runInput, setRunInput] = useState({
+    distanceKm: '',
+    minutes: '',
+    seconds: '',
+    date: new Date().toISOString().split('T')[0],
+  });
   // Guards the save effect so we don't overwrite stored data with the empty
   // initial state before loadData() has populated it.
   const hydratedRef = useRef(false);
@@ -120,6 +130,23 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Format a duration (seconds) as mm:ss for run display.
+  const formatDuration = (seconds) => {
+    if (!seconds && seconds !== 0) return '–';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.round(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Derive pace (min/km) from distance + duration and format as "m:ss /km".
+  const formatPace = (distanceKm, durationSec) => {
+    if (!distanceKm || distanceKm <= 0 || !durationSec) return '–';
+    const paceSec = durationSec / distanceKm;
+    const mins = Math.floor(paceSec / 60);
+    const secs = Math.round(paceSec % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')} /km`;
   };
 
   // Reset stopwatch when drawer opens
@@ -169,6 +196,7 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
       setExercises(data.exercises);
       setPRs(data.prs);
       setBodyWeights(data.bodyWeights);
+      setRuns(data.runs || []);
       hydratedRef.current = true;
     })();
     return () => {
@@ -190,8 +218,8 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
   // the initial load has hydrated state so we never clobber stored data.
   useEffect(() => {
     if (!hydratedRef.current) return;
-    saveData(userId, { exercises, prs, bodyWeights });
-  }, [exercises, prs, bodyWeights, userId]);
+    saveData(userId, { exercises, prs, bodyWeights, runs });
+  }, [exercises, prs, bodyWeights, runs, userId]);
 
   // Date utility functions
   const getMondayOfCurrentWeek = () => {
@@ -276,6 +304,28 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
       return prDate >= getStartOfPreviousMonth() && prDate <= getEndOfPreviousMonth();
     }).length;
 
+    // Running stats for the current month.
+    const runsThisMonthList = runs.filter((run) => {
+      const runDate = new Date(run.date);
+      return runDate >= monthStart && runDate <= monthEnd;
+    });
+    let kmThisMonth = 0;
+    let durationThisMonth = 0;
+    let longestRunKm = 0;
+    let bestPaceSecPerKm = null;
+    runsThisMonthList.forEach((run) => {
+      const distanceKm = Number(run.distanceKm) || 0;
+      const durationSec = Number(run.durationSec) || 0;
+      kmThisMonth += distanceKm;
+      durationThisMonth += durationSec;
+      if (distanceKm > longestRunKm) longestRunKm = distanceKm;
+      if (distanceKm > 0 && durationSec > 0) {
+        const pace = durationSec / distanceKm;
+        if (bestPaceSecPerKm === null || pace < bestPaceSecPerKm) bestPaceSecPerKm = pace;
+      }
+    });
+    const avgPaceSecPerKm = kmThisMonth > 0 ? durationThisMonth / kmThisMonth : null;
+
     return {
       workoutsThisWeek: workoutDatesThisWeek.size,
       workoutsThisMonth: workoutDatesThisMonth.size,
@@ -283,8 +333,58 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
       totalSets,
       newPRsThisMonth,
       newPRsPastMonth,
-      setsByCategoryThisMonth
+      setsByCategoryThisMonth,
+      runsThisMonth: runsThisMonthList.length,
+      kmThisMonth,
+      avgPaceSecPerKm,
+      longestRunKm,
+      bestPaceSecPerKm
     };
+  };
+
+  // Month-over-month trends for the Overview chart. Buckets the last `monthsBack`
+  // months (current month last), seeding empty months so the axis is continuous.
+  // Workouts are counted as unique training *days* per month — consistent with
+  // how workoutsThisMonth is computed elsewhere.
+  const getMonthlyTrends = (monthsBack = 6) => {
+    const now = new Date();
+    const buckets = [];
+    const index = {};
+    for (let i = monthsBack - 1; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      // Disambiguate across a year boundary by tagging January with its year.
+      const label =
+        d.getMonth() === 0
+          ? `${d.toLocaleString('default', { month: 'short' })} ${d.getFullYear()}`
+          : d.toLocaleString('default', { month: 'short' });
+      const bucket = { key, label, workoutDates: new Set(), runs: 0, km: 0 };
+      index[key] = bucket;
+      buckets.push(bucket);
+    }
+
+    Object.values(exercises).forEach((exercise) => {
+      (exercise.sets || []).forEach(({ date }) => {
+        const key = date.slice(0, 7); // YYYY-MM
+        if (index[key]) index[key].workoutDates.add(date);
+      });
+    });
+
+    runs.forEach((run) => {
+      const key = run.date.slice(0, 7);
+      if (index[key]) {
+        index[key].runs += 1;
+        index[key].km += Number(run.distanceKm) || 0;
+      }
+    });
+
+    return buckets.map((b) => ({
+      key: b.key,
+      label: b.label,
+      workouts: b.workoutDates.size,
+      runs: b.runs,
+      km: Number(b.km.toFixed(1)),
+    }));
   };
 
   const handleDeleteExercise = (exerciseName) => {
@@ -396,8 +496,33 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
     });
   };
 
+  // Add a run. distanceKm is a number (km); durationSec the total time in seconds.
+  // Keeps the list sorted by date descending (most recent first).
+  const handleAddRun = (date, distanceKm, durationSec) => {
+    const formattedDate = date.includes('T') ? date.split('T')[0] : date;
+    const entry = {
+      date: formattedDate,
+      distanceKm: Number(Number(distanceKm).toFixed(2)),
+      durationSec: Math.round(Number(durationSec)),
+    };
+    setRuns((prev) =>
+      [...prev, entry].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
+    );
+  };
+
+  const handleDeleteRun = (index) => {
+    const run = runs[index];
+    if (
+      window.confirm(
+        `Delete run: ${run.distanceKm}km in ${formatDuration(run.durationSec)} on ${run.date}?`
+      )
+    ) {
+      setRuns((prev) => prev.filter((_, idx) => idx !== index));
+    }
+  };
+
   const handleExport = () => {
-    const dataStr = JSON.stringify({ exercises, prs, bodyWeights }, null, 2);
+    const dataStr = JSON.stringify({ exercises, prs, bodyWeights, runs }, null, 2);
     const blob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -420,6 +545,9 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
             if (Array.isArray(data.bodyWeights)) {
               setBodyWeights(data.bodyWeights);
             }
+            if (Array.isArray(data.runs)) {
+              setRuns(data.runs);
+            }
             alert('Data imported successfully!');
           } else {
             alert('Invalid data format. Make sure it has { exercises, prs }.');
@@ -434,6 +562,7 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
   };
 
   const metrics = getDashboardMetrics();
+  const monthlyTrends = getMonthlyTrends();
   const monthStart = getStartOfCurrentMonth();
   const monthEnd = getEndOfCurrentMonth();
   const monthlyPRs = Object.entries(prs)
@@ -686,6 +815,16 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
     };
   };
 
+  // Run dates (YYYY-MM-DD) that fall within a given month range, for the heatmap.
+  const runDatesInRange = (rangeStart, rangeEnd) =>
+    runs
+      .filter((run) => {
+        const [year, month, day] = run.date.split('-').map(Number);
+        const runDate = new Date(year, month - 1, day);
+        return runDate >= rangeStart && runDate <= rangeEnd;
+      })
+      .map((run) => run.date);
+
   return (
     <div className={`p-4 max-w-6xl mx-auto min-h-screen content-pad-bottom ${isDarkMode ? 'app-bg-dark text-zinc-100' : 'app-bg-light text-zinc-900'}`}>
       <input
@@ -699,6 +838,58 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
         <h1 className="text-xl font-bold tracking-tight">
           Gym<span className="text-brand">Genius</span>
         </h1>
+        <Sheet>
+          <SheetTrigger asChild>
+            <Button variant="ghost" size="icon" aria-label="Settings">
+              <Settings size={20} />
+            </Button>
+          </SheetTrigger>
+          <SheetContent className={isDarkMode ? 'bg-zinc-900 border-zinc-700 text-zinc-100' : ''}>
+            <SheetHeader>
+              <SheetTitle className={isDarkMode ? 'text-zinc-100' : ''}>Settings</SheetTitle>
+            </SheetHeader>
+            <div className="mt-6 space-y-4">
+              <Card className={isDarkMode ? 'bg-zinc-800 border-zinc-700' : ''}>
+                <CardHeader>
+                  <CardTitle className={`text-base ${isDarkMode ? 'text-zinc-100' : ''}`}>Appearance</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Button variant="outline" className="w-full justify-start" onClick={() => setIsDarkMode(!isDarkMode)}>
+                    {isDarkMode ? <Sun size={16} className="mr-2" /> : <Moon size={16} className="mr-2" />}
+                    {isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+                  </Button>
+                </CardContent>
+              </Card>
+
+              <Card className={isDarkMode ? 'bg-zinc-800 border-zinc-700' : ''}>
+                <CardHeader>
+                  <CardTitle className={`text-base ${isDarkMode ? 'text-zinc-100' : ''}`}>Data</CardTitle>
+                </CardHeader>
+                <CardContent className="grid grid-cols-2 gap-2">
+                  <Button variant="outline" className="justify-start" onClick={handleExport}>
+                    <Download size={16} className="mr-2" /> Export
+                  </Button>
+                  <Button variant="outline" className="justify-start" onClick={() => document.getElementById('import').click()}>
+                    <Upload size={16} className="mr-2" /> Import
+                  </Button>
+                </CardContent>
+              </Card>
+
+              {onSignOut && (
+                <Card className={isDarkMode ? 'bg-zinc-800 border-zinc-700' : ''}>
+                  <CardHeader>
+                    <CardTitle className={`text-base ${isDarkMode ? 'text-zinc-100' : ''}`}>Account</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <Button variant="outline" className="w-full justify-start" onClick={onSignOut}>
+                      <LogOut size={16} className="mr-2" /> Sign out
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          </SheetContent>
+        </Sheet>
       </div>
 
       <Tabs value={currentTab} onValueChange={setCurrentTab} className="w-full">
@@ -723,6 +914,7 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
                     })
                     .map(set => set.date)
                   }
+                  runDates={runDatesInRange(getStartOfPreviousMonth(), getEndOfPreviousMonth())}
                   startDate={getStartOfPreviousMonth()}
                   endDate={getEndOfPreviousMonth()}
                   isDarkMode={isDarkMode}
@@ -753,6 +945,7 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
                     })
                     .map(set => set.date)
                   }
+                  runDates={runDatesInRange(getStartOfCurrentMonth(), getEndOfCurrentMonth())}
                   startDate={getStartOfCurrentMonth()}
                   endDate={getEndOfCurrentMonth()}
                   isDarkMode={isDarkMode}
@@ -775,6 +968,20 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
               monthLabel={monthStart.toLocaleString('default', { month: 'long' })}
               isDarkMode={isDarkMode}
             />
+
+            {/* Monthly running summary */}
+            <RunningStats
+              kmThisMonth={metrics.kmThisMonth}
+              runsThisMonth={metrics.runsThisMonth}
+              avgPaceSecPerKm={metrics.avgPaceSecPerKm}
+              longestRunKm={metrics.longestRunKm}
+              bestPaceSecPerKm={metrics.bestPaceSecPerKm}
+              monthLabel={monthStart.toLocaleString('default', { month: 'long' })}
+              isDarkMode={isDarkMode}
+            />
+
+            {/* Month-over-month workouts / runs / km comparison */}
+            <MonthlyTrends data={monthlyTrends} isDarkMode={isDarkMode} />
 
             {/* Monthly PRs List */}
             {monthlyPRs.length > 0 && (
@@ -967,47 +1174,126 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
           </TabsContent>
         ))}
 
-        <TabsContent value="More">
-          <div className="space-y-4">
-            <Card className={isDarkMode ? 'bg-zinc-800 border-zinc-700' : ''}>
-              <CardHeader>
-                <CardTitle className={`text-base ${isDarkMode ? 'text-zinc-100' : ''}`}>Appearance</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Button variant="outline" className="w-full justify-start" onClick={() => setIsDarkMode(!isDarkMode)}>
-                  {isDarkMode ? <Sun size={16} className="mr-2" /> : <Moon size={16} className="mr-2" />}
-                  {isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
-                </Button>
-              </CardContent>
-            </Card>
+        <TabsContent value="Runs">
+          {(() => {
+            const runToday = new Date().toISOString().split('T')[0];
+            const distanceKm = parseFloat(runInput.distanceKm);
+            const durationSec =
+              (parseInt(runInput.minutes, 10) || 0) * 60 + (parseInt(runInput.seconds, 10) || 0);
+            const canAdd = distanceKm > 0 && durationSec > 0;
+            const submitRun = () => {
+              if (!canAdd) return;
+              handleAddRun(runInput.date || runToday, distanceKm, durationSec);
+              setRunInput((prev) => ({ ...prev, distanceKm: '', minutes: '', seconds: '' }));
+            };
+            return (
+              <div className="space-y-4">
+                <Card className={isDarkMode ? 'bg-zinc-800 border-zinc-700' : ''}>
+                  <CardHeader className="py-3">
+                    <CardTitle className={`text-base ${isDarkMode ? 'text-zinc-100' : ''}`}>Log a run</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label htmlFor="run-distance">Distance (km)</Label>
+                        <Input
+                          id="run-distance"
+                          type="number"
+                          inputMode="decimal"
+                          step="0.01"
+                          placeholder="5.0"
+                          value={runInput.distanceKm}
+                          onChange={(e) => setRunInput((prev) => ({ ...prev, distanceKm: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="run-date">Date</Label>
+                        <Input
+                          id="run-date"
+                          type="date"
+                          value={runInput.date || runToday}
+                          onChange={(e) => setRunInput((prev) => ({ ...prev, date: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="run-min">Minutes</Label>
+                        <Input
+                          id="run-min"
+                          type="number"
+                          inputMode="numeric"
+                          placeholder="25"
+                          value={runInput.minutes}
+                          onChange={(e) => setRunInput((prev) => ({ ...prev, minutes: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="run-sec">Seconds</Label>
+                        <Input
+                          id="run-sec"
+                          type="number"
+                          inputMode="numeric"
+                          placeholder="00"
+                          value={runInput.seconds}
+                          onChange={(e) => setRunInput((prev) => ({ ...prev, seconds: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">
+                        Pace: <span className="font-semibold text-run">{canAdd ? formatPace(distanceKm, durationSec) : '–'}</span>
+                      </span>
+                      <Button onClick={submitRun} disabled={!canAdd}>
+                        <Plus size={16} className="mr-1" /> Add run
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
 
-            <Card className={isDarkMode ? 'bg-zinc-800 border-zinc-700' : ''}>
-              <CardHeader>
-                <CardTitle className={`text-base ${isDarkMode ? 'text-zinc-100' : ''}`}>Data</CardTitle>
-              </CardHeader>
-              <CardContent className="grid grid-cols-2 gap-2">
-                <Button variant="outline" className="justify-start" onClick={handleExport}>
-                  <Download size={16} className="mr-2" /> Export
-                </Button>
-                <Button variant="outline" className="justify-start" onClick={() => document.getElementById('import').click()}>
-                  <Upload size={16} className="mr-2" /> Import
-                </Button>
-              </CardContent>
-            </Card>
-
-            {onSignOut && (
-              <Card className={isDarkMode ? 'bg-zinc-800 border-zinc-700' : ''}>
-                <CardHeader>
-                  <CardTitle className={`text-base ${isDarkMode ? 'text-zinc-100' : ''}`}>Account</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <Button variant="outline" className="w-full justify-start" onClick={onSignOut}>
-                    <LogOut size={16} className="mr-2" /> Sign out
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
-          </div>
+                <Card className={isDarkMode ? 'bg-zinc-800 border-zinc-700' : ''}>
+                  <CardHeader className="py-3">
+                    <CardTitle className={`text-base ${isDarkMode ? 'text-zinc-100' : ''}`}>Recent runs</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {runs.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No runs logged yet. Add your first run above.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {runs.map((run, idx) => (
+                          <div
+                            key={`${run.date}-${idx}`}
+                            className={`flex items-center justify-between rounded-lg border p-2.5 ${
+                              isDarkMode ? 'border-zinc-700 bg-zinc-900/40' : 'border-zinc-200 bg-zinc-50'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <Activity size={18} className="text-run" />
+                              <div>
+                                <p className={`text-sm font-semibold ${isDarkMode ? 'text-zinc-100' : 'text-zinc-800'}`}>
+                                  {run.distanceKm} km · {formatDuration(run.durationSec)}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {run.date} · {formatPace(run.distanceKm, run.durationSec)}
+                                </p>
+                              </div>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              aria-label="Delete run"
+                              onClick={() => handleDeleteRun(idx)}
+                              className="text-muted-foreground hover:text-loss"
+                            >
+                              <X size={16} />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            );
+          })()}
         </TabsContent>
       </Tabs>
 

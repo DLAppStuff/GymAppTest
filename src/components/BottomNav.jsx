@@ -1,15 +1,16 @@
 import React from 'react';
-import { Home, ArrowUpFromLine, ArrowDownToLine, Footprints, Menu } from 'lucide-react';
+import { Home, ArrowUpFromLine, ArrowDownToLine, Footprints, Activity } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 // Bottom tab bar. Drives the controlled <Tabs value> in App.js.
-// Push/Pull/Legs map to the workout categories; "More" holds data + settings.
+// Push/Pull/Legs map to the workout categories; "Runs" logs running efforts.
+// (App settings live behind the gear icon in the header.)
 const NAV_ITEMS = [
   { value: 'Overview', label: 'Home', icon: Home },
   { value: 'Push', label: 'Push', icon: ArrowUpFromLine },
   { value: 'Pull', label: 'Pull', icon: ArrowDownToLine },
   { value: 'Legs', label: 'Legs', icon: Footprints },
-  { value: 'More', label: 'More', icon: Menu },
+  { value: 'Runs', label: 'Runs', icon: Activity },
 ];
 
 export default function BottomNav({ currentTab, onChange }) {

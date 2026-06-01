@@ -4,13 +4,15 @@ import { supabase, isSupabaseConfigured } from './supabase';
 // device is still picked up, and so we have an offline cache.
 const LS_PROGRESS = 'gymProgress_v3';
 const LS_WEIGHTS = 'bodyWeights';
+const LS_RUNS = 'runs';
 
-const EMPTY = { exercises: {}, prs: {}, bodyWeights: [] };
+const EMPTY = { exercises: {}, prs: {}, bodyWeights: [], runs: [] };
 
 function readLocal() {
   let exercises = {};
   let prs = {};
   let bodyWeights = [];
+  let runs = [];
   try {
     const progress = localStorage.getItem(LS_PROGRESS);
     if (progress) {
@@ -20,16 +22,19 @@ function readLocal() {
     }
     const weights = localStorage.getItem(LS_WEIGHTS);
     if (weights) bodyWeights = JSON.parse(weights);
+    const storedRuns = localStorage.getItem(LS_RUNS);
+    if (storedRuns) runs = JSON.parse(storedRuns);
   } catch (err) {
     console.error('Failed to read local data:', err);
   }
-  return { exercises, prs, bodyWeights };
+  return { exercises, prs, bodyWeights, runs };
 }
 
-function writeLocal({ exercises, prs, bodyWeights }) {
+function writeLocal({ exercises, prs, bodyWeights, runs }) {
   try {
     localStorage.setItem(LS_PROGRESS, JSON.stringify({ exercises, prs }));
     localStorage.setItem(LS_WEIGHTS, JSON.stringify(bodyWeights));
+    localStorage.setItem(LS_RUNS, JSON.stringify(runs || []));
   } catch (err) {
     console.error('Failed to write local cache:', err);
   }
@@ -37,11 +42,12 @@ function writeLocal({ exercises, prs, bodyWeights }) {
 
 // Returns true if the state holds any real user data (used to decide whether
 // to seed an empty cloud row from this device's local cache on first login).
-function hasData({ exercises, prs, bodyWeights }) {
+function hasData({ exercises, prs, bodyWeights, runs }) {
   return (
     Object.keys(exercises || {}).length > 0 ||
     Object.keys(prs || {}).length > 0 ||
-    (bodyWeights || []).length > 0
+    (bodyWeights || []).length > 0 ||
+    (runs || []).length > 0
   );
 }
 
@@ -58,7 +64,7 @@ export async function loadData(userId) {
 
   const { data, error } = await supabase
     .from('gym_data')
-    .select('exercises, prs, body_weights')
+    .select('exercises, prs, body_weights, runs')
     .eq('user_id', userId)
     .maybeSingle();
 
@@ -72,6 +78,7 @@ export async function loadData(userId) {
       exercises: data.exercises || {},
       prs: data.prs || {},
       bodyWeights: data.body_weights || [],
+      runs: data.runs || [],
     };
     writeLocal(loaded); // refresh offline cache
     return loaded;
@@ -91,6 +98,7 @@ export async function saveDataNow(userId, state) {
     exercises: state.exercises || {},
     prs: state.prs || {},
     bodyWeights: state.bodyWeights || [],
+    runs: state.runs || [],
   };
   writeLocal(data);
 
@@ -102,6 +110,7 @@ export async function saveDataNow(userId, state) {
       exercises: data.exercises,
       prs: data.prs,
       body_weights: data.bodyWeights,
+      runs: data.runs,
     },
     { onConflict: 'user_id' }
   );
