@@ -3,7 +3,9 @@ import {
   Chart as ChartJS,
   CategoryScale,
   LinearScale,
+  BarController,
   BarElement,
+  LineController,
   PointElement,
   LineElement,
   Tooltip,
@@ -12,10 +14,15 @@ import {
 import { Chart } from 'react-chartjs-2';
 import { Card, CardHeader, CardTitle, CardContent } from "./ui/card";
 
+// The generic <Chart> component needs the controllers registered (not just the
+// elements). Production builds tree-shake away anything unregistered, so
+// omitting BarController/LineController crashes only in the prod bundle.
 ChartJS.register(
   CategoryScale,
   LinearScale,
+  BarController,
   BarElement,
+  LineController,
   PointElement,
   LineElement,
   Tooltip,
