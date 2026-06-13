@@ -29,17 +29,18 @@ ChartJS.register(
   Legend
 );
 
-// Month-over-month comparison: workouts + runs as grouped bars (left axis,
-// counts) and distance as a line (right axis, km). `data` comes from
-// getMonthlyTrends() in App.js: [{ label, workouts, runs, km }].
+// Month-over-month comparison: workouts + runs + other activities as grouped
+// bars (left axis, counts) and run distance as a line (right axis, km). `data`
+// comes from getMonthlyTrends() in App.js: [{ label, workouts, runs, km, activities }].
 export default function MonthlyTrends({ data, isDarkMode }) {
   const textColor = isDarkMode ? '#e4e4e7' : '#27272a';
   const gridColor = isDarkMode ? '#3f3f46' : '#e4e4e7';
   const orange = isDarkMode ? '#f97316' : '#ea580c';
   const blue = isDarkMode ? '#38bdf8' : '#0ea5e9';
   const green = isDarkMode ? '#34d399' : '#16a34a';
+  const violet = isDarkMode ? '#a78bfa' : '#7c3aed';
 
-  const hasData = data.some((d) => d.workouts || d.runs || d.km);
+  const hasData = data.some((d) => d.workouts || d.runs || d.km || d.activities);
 
   const chartData = useMemo(
     () => ({
@@ -64,6 +65,15 @@ export default function MonthlyTrends({ data, isDarkMode }) {
           order: 2,
         },
         {
+          type: 'bar',
+          label: 'Activities',
+          data: data.map((d) => d.activities),
+          backgroundColor: violet,
+          yAxisID: 'y',
+          borderRadius: 4,
+          order: 2,
+        },
+        {
           type: 'line',
           label: 'km',
           data: data.map((d) => d.km),
@@ -77,7 +87,7 @@ export default function MonthlyTrends({ data, isDarkMode }) {
         },
       ],
     }),
-    [data, orange, blue, green]
+    [data, orange, blue, green, violet]
   );
 
   const chartOptions = {
@@ -130,7 +140,7 @@ export default function MonthlyTrends({ data, isDarkMode }) {
           </div>
         ) : (
           <p className="text-sm text-muted-foreground">
-            Log workouts and runs to see your month-over-month comparison.
+            Log workouts, runs and activities to see your month-over-month comparison.
           </p>
         )}
       </CardContent>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Trophy, Plus, Download, Upload, ChevronDown, ChevronUp, X, Moon, Sun, Timer, LogOut, Settings, Activity } from 'lucide-react';
+import { ACTIVITY_TYPES, getActivityType } from './lib/activityTypes';
 import { Tabs, TabsContent } from "./components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "./components/ui/card";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "./components/ui/accordion";
@@ -107,6 +108,17 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
     seconds: '',
     date: new Date().toISOString().split('T')[0],
   });
+  // Other activities (Padel, HIIT, jump rope, ...): flat list, minimal shape
+  // { id, type, label, date, durationSec, notes }. See lib/activityTypes.js.
+  const [activities, setActivities] = useState([]);
+  const [activityInput, setActivityInput] = useState({
+    type: ACTIVITY_TYPES[0].id,
+    customLabel: '',
+    minutes: '',
+    seconds: '',
+    date: new Date().toISOString().split('T')[0],
+    notes: '',
+  });
   // Guards the save effect so we don't overwrite stored data with the empty
   // initial state before loadData() has populated it.
   const hydratedRef = useRef(false);
@@ -197,6 +209,7 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
       setPRs(data.prs);
       setBodyWeights(data.bodyWeights);
       setRuns(data.runs || []);
+      setActivities(data.activities || []);
       hydratedRef.current = true;
     })();
     return () => {
@@ -218,8 +231,8 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
   // the initial load has hydrated state so we never clobber stored data.
   useEffect(() => {
     if (!hydratedRef.current) return;
-    saveData(userId, { exercises, prs, bodyWeights, runs });
-  }, [exercises, prs, bodyWeights, runs, userId]);
+    saveData(userId, { exercises, prs, bodyWeights, runs, activities });
+  }, [exercises, prs, bodyWeights, runs, activities, userId]);
 
   // Date utility functions
   const getMondayOfCurrentWeek = () => {
@@ -326,6 +339,15 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
     });
     const avgPaceSecPerKm = kmThisMonth > 0 ? durationThisMonth / kmThisMonth : null;
 
+    // Other-activity stats for the current month (Padel, HIIT, jump rope, ...).
+    const activitiesThisMonthList = activities.filter((a) => {
+      const aDate = new Date(a.date);
+      return aDate >= monthStart && aDate <= monthEnd;
+    });
+    const activityMinutesThisMonth = Math.round(
+      activitiesThisMonthList.reduce((sum, a) => sum + (Number(a.durationSec) || 0), 0) / 60
+    );
+
     return {
       workoutsThisWeek: workoutDatesThisWeek.size,
       workoutsThisMonth: workoutDatesThisMonth.size,
@@ -338,7 +360,9 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
       kmThisMonth,
       avgPaceSecPerKm,
       longestRunKm,
-      bestPaceSecPerKm
+      bestPaceSecPerKm,
+      activitiesThisMonth: activitiesThisMonthList.length,
+      activityMinutesThisMonth
     };
   };
 
@@ -358,7 +382,7 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
         d.getMonth() === 0
           ? `${d.toLocaleString('default', { month: 'short' })} ${d.getFullYear()}`
           : d.toLocaleString('default', { month: 'short' });
-      const bucket = { key, label, workoutDates: new Set(), runs: 0, km: 0 };
+      const bucket = { key, label, workoutDates: new Set(), runs: 0, km: 0, activities: 0 };
       index[key] = bucket;
       buckets.push(bucket);
     }
@@ -378,12 +402,18 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
       }
     });
 
+    activities.forEach((a) => {
+      const key = a.date.slice(0, 7);
+      if (index[key]) index[key].activities += 1;
+    });
+
     return buckets.map((b) => ({
       key: b.key,
       label: b.label,
       workouts: b.workoutDates.size,
       runs: b.runs,
       km: Number(b.km.toFixed(1)),
+      activities: b.activities,
     }));
   };
 
@@ -521,8 +551,37 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
     }
   };
 
+  // Add an "other" activity (Padel, HIIT, ...). type is a registry id; label is
+  // the display name (the custom name for type 'Other'). Sorted by date desc.
+  const handleAddActivity = (type, label, date, durationSec, notes) => {
+    const formattedDate = date.includes('T') ? date.split('T')[0] : date;
+    const entry = {
+      id: Date.now(),
+      type,
+      label,
+      date: formattedDate,
+      durationSec: Math.round(Number(durationSec)),
+      notes: (notes || '').trim(),
+    };
+    setActivities((prev) =>
+      [...prev, entry].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
+    );
+  };
+
+  const handleDeleteActivity = (id) => {
+    const activity = activities.find((a) => a.id === id);
+    if (!activity) return;
+    if (
+      window.confirm(
+        `Delete ${activity.label}: ${formatDuration(activity.durationSec)} on ${activity.date}?`
+      )
+    ) {
+      setActivities((prev) => prev.filter((a) => a.id !== id));
+    }
+  };
+
   const handleExport = () => {
-    const dataStr = JSON.stringify({ exercises, prs, bodyWeights, runs }, null, 2);
+    const dataStr = JSON.stringify({ exercises, prs, bodyWeights, runs, activities }, null, 2);
     const blob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -825,6 +884,16 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
       })
       .map((run) => run.date);
 
+  // Activity dates (YYYY-MM-DD) within a month range, for the heatmap dot marker.
+  const activityDatesInRange = (rangeStart, rangeEnd) =>
+    activities
+      .filter((a) => {
+        const [year, month, day] = a.date.split('-').map(Number);
+        const aDate = new Date(year, month - 1, day);
+        return aDate >= rangeStart && aDate <= rangeEnd;
+      })
+      .map((a) => a.date);
+
   return (
     <div className={`p-4 max-w-6xl mx-auto min-h-screen content-pad-bottom ${isDarkMode ? 'app-bg-dark text-zinc-100' : 'app-bg-light text-zinc-900'}`}>
       <input
@@ -915,6 +984,7 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
                     .map(set => set.date)
                   }
                   runDates={runDatesInRange(getStartOfPreviousMonth(), getEndOfPreviousMonth())}
+                  activityDates={activityDatesInRange(getStartOfPreviousMonth(), getEndOfPreviousMonth())}
                   startDate={getStartOfPreviousMonth()}
                   endDate={getEndOfPreviousMonth()}
                   isDarkMode={isDarkMode}
@@ -946,6 +1016,7 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
                     .map(set => set.date)
                   }
                   runDates={runDatesInRange(getStartOfCurrentMonth(), getEndOfCurrentMonth())}
+                  activityDates={activityDatesInRange(getStartOfCurrentMonth(), getEndOfCurrentMonth())}
                   startDate={getStartOfCurrentMonth()}
                   endDate={getEndOfCurrentMonth()}
                   isDarkMode={isDarkMode}
@@ -1118,6 +1189,7 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
                         volumeData={[]}
                         isDarkMode={isDarkMode}
                         hideVolume={true}
+                        showYear={true}
                       />
                     </div>
                   )}
@@ -1287,6 +1359,246 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
                             </Button>
                           </div>
                         ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            );
+          })()}
+        </TabsContent>
+
+        <TabsContent value="Activities">
+          {(() => {
+            const activityToday = new Date().toISOString().split('T')[0];
+            const selectedType = getActivityType(activityInput.type);
+            const isCustom = !!selectedType.custom;
+            const effectiveLabel = isCustom
+              ? (activityInput.customLabel.trim() || 'Other')
+              : selectedType.label;
+            const durationSec =
+              (parseInt(activityInput.minutes, 10) || 0) * 60 +
+              (parseInt(activityInput.seconds, 10) || 0);
+            const canAdd = durationSec > 0;
+            const submitActivity = () => {
+              if (!canAdd) return;
+              handleAddActivity(
+                activityInput.type,
+                effectiveLabel,
+                activityInput.date || activityToday,
+                durationSec,
+                activityInput.notes
+              );
+              setActivityInput((prev) => ({
+                ...prev,
+                minutes: '',
+                seconds: '',
+                notes: '',
+                customLabel: '',
+              }));
+            };
+
+            // Current-month summary + per-type breakdown.
+            const monthStart = getStartOfCurrentMonth();
+            const monthEnd = getEndOfCurrentMonth();
+            const thisMonth = activities.filter((a) => {
+              const d = new Date(a.date);
+              return d >= monthStart && d <= monthEnd;
+            });
+            const monthSec = thisMonth.reduce((s, a) => s + (Number(a.durationSec) || 0), 0);
+            const byType = {};
+            thisMonth.forEach((a) => {
+              const key = a.label || getActivityType(a.type).label;
+              if (!byType[key]) byType[key] = { count: 0, sec: 0, type: a.type };
+              byType[key].count += 1;
+              byType[key].sec += Number(a.durationSec) || 0;
+            });
+            const breakdown = Object.entries(byType).sort((a, b) => b[1].sec - a[1].sec);
+
+            return (
+              <div className="space-y-4">
+                <Card className={isDarkMode ? 'bg-zinc-800 border-zinc-700' : ''}>
+                  <CardHeader className="py-3">
+                    <CardTitle className={`text-base ${isDarkMode ? 'text-zinc-100' : ''}`}>Log an activity</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="flex flex-wrap gap-2">
+                      {ACTIVITY_TYPES.map((t) => {
+                        const Icon = t.icon;
+                        const active = activityInput.type === t.id;
+                        return (
+                          <button
+                            key={t.id}
+                            type="button"
+                            onClick={() => setActivityInput((prev) => ({ ...prev, type: t.id }))}
+                            className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+                              active
+                                ? 'border-activity bg-activity text-white'
+                                : isDarkMode
+                                ? 'border-zinc-700 text-zinc-300 hover:border-activity/60'
+                                : 'border-zinc-200 text-zinc-600 hover:border-activity/60'
+                            }`}
+                          >
+                            <Icon size={15} />
+                            {t.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {isCustom && (
+                      <div>
+                        <Label htmlFor="activity-name">Activity name</Label>
+                        <Input
+                          id="activity-name"
+                          type="text"
+                          placeholder="e.g. Bouldering"
+                          value={activityInput.customLabel}
+                          onChange={(e) => setActivityInput((prev) => ({ ...prev, customLabel: e.target.value }))}
+                        />
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label htmlFor="activity-date">Date</Label>
+                        <Input
+                          id="activity-date"
+                          type="date"
+                          value={activityInput.date || activityToday}
+                          onChange={(e) => setActivityInput((prev) => ({ ...prev, date: e.target.value }))}
+                        />
+                      </div>
+                      <div />
+                      <div>
+                        <Label htmlFor="activity-min">Minutes</Label>
+                        <Input
+                          id="activity-min"
+                          type="number"
+                          inputMode="numeric"
+                          placeholder="45"
+                          value={activityInput.minutes}
+                          onChange={(e) => setActivityInput((prev) => ({ ...prev, minutes: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="activity-sec">Seconds</Label>
+                        <Input
+                          id="activity-sec"
+                          type="number"
+                          inputMode="numeric"
+                          placeholder="00"
+                          value={activityInput.seconds}
+                          onChange={(e) => setActivityInput((prev) => ({ ...prev, seconds: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="activity-notes">Notes (optional)</Label>
+                      <Input
+                        id="activity-notes"
+                        type="text"
+                        placeholder="How did it go?"
+                        value={activityInput.notes}
+                        onChange={(e) => setActivityInput((prev) => ({ ...prev, notes: e.target.value }))}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">
+                        Duration: <span className="font-semibold text-activity">{canAdd ? formatDuration(durationSec) : '–'}</span>
+                      </span>
+                      <Button onClick={submitActivity} disabled={!canAdd}>
+                        <Plus size={16} className="mr-1" /> Add {effectiveLabel}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className={isDarkMode ? 'bg-zinc-800 border-zinc-700' : ''}>
+                  <CardHeader className="py-3">
+                    <CardTitle className={`text-base ${isDarkMode ? 'text-zinc-100' : ''}`}>
+                      This month
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {thisMonth.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No activities logged this month yet.</p>
+                    ) : (
+                      <>
+                        <div className="mb-3 flex items-center gap-6">
+                          <div>
+                            <p className="text-2xl font-bold tabular-nums text-activity">{thisMonth.length}</p>
+                            <p className="text-xs text-muted-foreground">{thisMonth.length === 1 ? 'session' : 'sessions'}</p>
+                          </div>
+                          <div>
+                            <p className="text-2xl font-bold tabular-nums text-activity">{Math.round(monthSec / 60)}</p>
+                            <p className="text-xs text-muted-foreground">minutes</p>
+                          </div>
+                        </div>
+                        <div className="space-y-1.5">
+                          {breakdown.map(([label, info]) => {
+                            const Icon = getActivityType(info.type).icon;
+                            return (
+                              <div key={label} className="flex items-center justify-between text-sm">
+                                <span className="flex items-center gap-2">
+                                  <Icon size={15} className="text-activity" />
+                                  {label}
+                                </span>
+                                <span className="text-muted-foreground">
+                                  {info.count}× · {Math.round(info.sec / 60)} min
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card className={isDarkMode ? 'bg-zinc-800 border-zinc-700' : ''}>
+                  <CardHeader className="py-3">
+                    <CardTitle className={`text-base ${isDarkMode ? 'text-zinc-100' : ''}`}>Recent activities</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {activities.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No activities logged yet. Add your first one above.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {activities.map((a) => {
+                          const Icon = getActivityType(a.type).icon;
+                          return (
+                            <div
+                              key={a.id}
+                              className={`flex items-center justify-between rounded-lg border p-2.5 ${
+                                isDarkMode ? 'border-zinc-700 bg-zinc-900/40' : 'border-zinc-200 bg-zinc-50'
+                              }`}
+                            >
+                              <div className="flex items-center gap-3">
+                                <Icon size={18} className="text-activity" />
+                                <div>
+                                  <p className={`text-sm font-semibold ${isDarkMode ? 'text-zinc-100' : 'text-zinc-800'}`}>
+                                    {a.label} · {formatDuration(a.durationSec)}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {a.date}{a.notes ? ` · ${a.notes}` : ''}
+                                  </p>
+                                </div>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                aria-label="Delete activity"
+                                onClick={() => handleDeleteActivity(a.id)}
+                                className="text-muted-foreground hover:text-loss"
+                              >
+                                <X size={16} />
+                              </Button>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </CardContent>

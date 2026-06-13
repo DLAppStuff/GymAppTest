@@ -31,6 +31,7 @@
     --gain: 152 72% 40%;
     --loss: 353 84% 58%;
     --run: 199 89% 48%;
+    --activity: 262 83% 58%;
     --surface: 0 0% 100%;
     --surface-foreground: 24 10% 10%;
   }
@@ -62,6 +63,7 @@
     --gain: 152 70% 50%;
     --loss: 353 90% 66%;
     --run: 199 90% 56%;
+    --activity: 262 84% 68%;
     --surface: 24 12% 11%;
     --surface-foreground: 30 12% 96%;
   }

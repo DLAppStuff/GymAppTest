@@ -1,7 +1,7 @@
 import React from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "./ui/card";
 
-const WorkoutHeatmap = ({ workoutDates, runDates = [], startDate, endDate, isDarkMode, isCurrentMonth }) => {
+const WorkoutHeatmap = ({ workoutDates, runDates = [], activityDates = [], startDate, endDate, isDarkMode, isCurrentMonth }) => {
   const getDaysInMonth = (date) => {
     return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
   };
@@ -31,6 +31,7 @@ const WorkoutHeatmap = ({ workoutDates, runDates = [], startDate, endDate, isDar
 
   const workoutDatesSet = createDatesSet(workoutDates);
   const runDatesSet = createDatesSet(runDates);
+  const activityDatesSet = createDatesSet(activityDates);
 
   const generateDays = () => {
     const days = [];
@@ -56,9 +57,12 @@ const WorkoutHeatmap = ({ workoutDates, runDates = [], startDate, endDate, isDar
       const day = String(i).padStart(2, '0');
       const dateString = `${year}-${month}-${day}`;
       
-      // Classify the day: gym only, run only, or both.
+      // Classify the day: gym only, run only, or both. Other activities are
+      // layered as a small corner dot (kept out of the bg colour logic to avoid
+      // a combinatorial colour explosion).
       const isGymDay = isValidDate && workoutDatesSet.has(dateString);
       const isRunDay = isValidDate && runDatesSet.has(dateString);
+      const isActivityDay = isValidDate && activityDatesSet.has(dateString);
       const isBoth = isGymDay && isRunDay;
       const isActive = isGymDay || isRunDay;
 
@@ -84,7 +88,7 @@ const WorkoutHeatmap = ({ workoutDates, runDates = [], startDate, endDate, isDar
         <div
           key={i}
           style={bgStyle}
-          className={`aspect-square flex items-center justify-center rounded-lg transition-all duration-200 hover:scale-105 ${bgClass} ${
+          className={`relative aspect-square flex items-center justify-center rounded-lg transition-all duration-200 hover:scale-105 ${bgClass} ${
             currentDate.toDateString() === today.toDateString() && isValidDate
               ? 'ring-2 ring-brand/60'
               : ''
@@ -100,6 +104,14 @@ const WorkoutHeatmap = ({ workoutDates, runDates = [], startDate, endDate, isDar
             }`}>
               {i}
             </span>
+          )}
+          {isActivityDay && (
+            // Activity is shown as a ring around the date so it composes with the
+            // gym/run background fill (e.g. a gym day that also had an activity).
+            <span
+              aria-hidden
+              className="pointer-events-none absolute inset-0 rounded-lg border-2 border-activity"
+            />
           )}
         </div>
       );
@@ -126,7 +138,7 @@ const WorkoutHeatmap = ({ workoutDates, runDates = [], startDate, endDate, isDar
           ))}
           {generateDays()}
         </div>
-        <div className={`mt-3 flex items-center gap-3 text-[10px] ${isDarkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
+        <div className={`mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] ${isDarkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
           <span className="flex items-center gap-1">
             <span className="h-2.5 w-2.5 rounded-sm bg-brand" /> Gym
           </span>
@@ -139,6 +151,9 @@ const WorkoutHeatmap = ({ workoutDates, runDates = [], startDate, endDate, isDar
               style={{ background: 'linear-gradient(135deg, hsl(var(--brand)) 0 50%, hsl(var(--run)) 50% 100%)' }}
             />{' '}
             Both
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="h-2.5 w-2.5 rounded-sm border-2 border-activity" /> Activity
           </span>
         </div>
       </CardContent>

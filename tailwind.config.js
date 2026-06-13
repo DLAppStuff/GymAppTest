@@ -46,6 +46,7 @@ module.exports = {
         gain: "hsl(var(--gain))",
         loss: "hsl(var(--loss))",
         run: "hsl(var(--run))",
+        activity: "hsl(var(--activity))",
         surface: {
           DEFAULT: "hsl(var(--surface))",
           foreground: "hsl(var(--surface-foreground))",
