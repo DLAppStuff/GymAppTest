@@ -23,10 +23,6 @@ ChartJS.register(
 );
 
 const ExerciseCharts = ({ weightData, volumeData, isDarkMode, hideVolume = false, showYear = false }) => {
-  // Body-weight history spans years, so append a minimalist 2-digit year (e.g.
-  // "Jun 13 '26"). The escaped '' renders a literal apostrophe before yy.
-  const formatDate = (dateStr) => format(new Date(dateStr), showYear ? "MMM d ''yy" : 'MMM d');
-
   const getMaxValue = (data, key = 'weight') => {
     if (!data || data.length === 0) return 0;
     const max = Math.max(...data.map(d => d[key]));
@@ -34,6 +30,10 @@ const ExerciseCharts = ({ weightData, volumeData, isDarkMode, hideVolume = false
   };
 
   const chartData = useMemo(() => {
+    // Body-weight history spans years, so append a minimalist 2-digit year (e.g.
+    // "Jun 13 '26"). The escaped '' renders a literal apostrophe before yy.
+    const formatDate = (dateStr) => format(new Date(dateStr), showYear ? "MMM d ''yy" : 'MMM d');
+
     // Get unique dates and sort them
     const dates = [...new Set([
       ...weightData.map(d => d.date),
