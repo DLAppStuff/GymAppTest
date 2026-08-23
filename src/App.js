@@ -54,11 +54,12 @@ const useLongPress = (callback = () => {}, ms = 800) => {
   };
 };
 
-const SetItem = ({ exerciseName, set, index, deleteSetCallback, isDarkMode }) => {
+const SetItem = ({ exerciseName, set, index, deleteSetCallback, isDarkMode, isBodyweight }) => {
   const longPressEvent = useLongPress(() => {
     const todayDate = new Date().toISOString().split('T')[0];
     if (set.date === todayDate) {
-      if (window.confirm(`Delete set: ${set.weight}kg x ${set.reps}?`)) {
+      const label = isBodyweight ? `${set.reps} reps` : `${set.weight}kg x ${set.reps}`;
+      if (window.confirm(`Delete set: ${label}?`)) {
         deleteSetCallback(exerciseName, index);
       }
     } else {
@@ -68,11 +69,11 @@ const SetItem = ({ exerciseName, set, index, deleteSetCallback, isDarkMode }) =>
 
   return (
     <div {...longPressEvent} className={`p-2 rounded border text-center ${
-      isDarkMode 
-        ? 'bg-zinc-700 border-zinc-600 text-zinc-100 hover:bg-zinc-600' 
+      isDarkMode
+        ? 'bg-zinc-700 border-zinc-600 text-zinc-100 hover:bg-zinc-600'
         : 'bg-zinc-100 border-zinc-200 text-zinc-700 hover:bg-zinc-50'
     }`}>
-      {set.weight}kg x {set.reps}
+      {isBodyweight ? `${set.reps} reps` : `${set.weight}kg x ${set.reps}`}
     </div>
   );
 };
@@ -82,7 +83,7 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
   const [prs, setPRs] = useState({});
   const [currentTab, setCurrentTab] = useState('Overview');
   const [showAddExerciseModal, setShowAddExerciseModal] = useState(false);
-  const [newExercise, setNewExercise] = useState({ name: '', category: 'Push' });
+  const [newExercise, setNewExercise] = useState({ name: '', category: 'Push', isBodyweight: false });
   const [showMonthlyPRList, setShowMonthlyPRList] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [selectedExercises, setSelectedExercises] = useState({
@@ -448,11 +449,12 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
         ...prev,
         [newExercise.name]: {
           category: newExercise.category,
+          isBodyweight: newExercise.isBodyweight,
           sets: [],
           dailyVolume: []
         }
       }));
-      setNewExercise({ name: '', category: 'Push' });
+      setNewExercise({ name: '', category: 'Push', isBodyweight: false });
       setShowAddExerciseModal(false);
     }
   };
@@ -460,23 +462,26 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
   const handleAddSet = (exerciseName, weight, reps, date = new Date().toISOString().split('T')[0]) => {
     // Ensure date is in YYYY-MM-DD format
     const formattedDate = date.includes('T') ? date.split('T')[0] : date;
-    
+
     setExercises((prev) => {
       const exercise = prev[exerciseName];
-      const newSet = { weight: Number(weight), reps: Number(reps), date: formattedDate };
+      const isBodyweight = !!exercise.isBodyweight;
+      const newSet = { weight: isBodyweight ? 0 : Number(weight), reps: Number(reps), date: formattedDate };
       const newSets = [...(exercise.sets || []), newSet];
-      
-      // Calculate daily volume
+
+      // Calculate daily total: reps for bodyweight exercises, weight*reps volume otherwise.
       const dailyVolume = newSets
         .filter((s) => s.date === formattedDate)
-        .reduce((total, s) => total + s.weight * s.reps, 0);
+        .reduce((total, s) => total + (isBodyweight ? s.reps : s.weight * s.reps), 0);
 
-      // Update PR if necessary
-      if (!prs[exerciseName] || weight > prs[exerciseName].weight) {
+      // Update PR if necessary. For bodyweight exercises the PR is the best single-set rep
+      // count, stored in the same `weight`/`previousWeight` fields as a weighted PR would be.
+      const prValue = isBodyweight ? Number(reps) : Number(weight);
+      if (!prs[exerciseName] || prValue > prs[exerciseName].weight) {
         setPRs((prevPRs) => ({
           ...prevPRs,
-          [exerciseName]: { 
-            weight: Number(Number(weight).toFixed(2)), 
+          [exerciseName]: {
+            weight: Number(prValue.toFixed(2)),
             date: formattedDate,
             previousWeight: prs[exerciseName]?.weight ? Number(Number(prs[exerciseName].weight).toFixed(2)) : 0
           }
@@ -509,16 +514,17 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
   const deleteSet = (exerciseName, setIndex) => {
     setExercises((prev) => {
       const updatedExercise = { ...prev[exerciseName] };
+      const isBodyweight = !!updatedExercise.isBodyweight;
       updatedExercise.sets = updatedExercise.sets.filter((_, idx) => idx !== setIndex);
-      
-      // Recalculate daily volume
+
+      // Recalculate daily volume (reps total for bodyweight exercises)
       const volumes = {};
       updatedExercise.sets.forEach(s => {
         if (!volumes[s.date]) volumes[s.date] = 0;
-        volumes[s.date] += s.weight * s.reps;
+        volumes[s.date] += isBodyweight ? s.reps : s.weight * s.reps;
       });
       updatedExercise.dailyVolume = Object.entries(volumes).map(([date, volume]) => ({ date, volume }));
-      
+
       return {
         ...prev,
         [exerciseName]: updatedExercise
@@ -632,7 +638,8 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
     .map(([exerciseName, record]) => ({
       exerciseName,
       weight: record.weight,
-      surplus: record.previousWeight ? Number((record.weight - record.previousWeight).toFixed(2)) : 0
+      surplus: record.previousWeight ? Number((record.weight - record.previousWeight).toFixed(2)) : 0,
+      isBodyweight: !!exercises[exerciseName]?.isBodyweight
     }));
 
   // Prepare exercise options for each category
@@ -661,23 +668,28 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
     if (!exerciseName || !exercises[exerciseName]) return null;
     
     const data = exercises[exerciseName];
+    const isBodyweight = !!data.isBodyweight;
     const todayDate = new Date().toISOString().split('T')[0];
     const lastSet = [...data.sets].reverse().find(set => set.date === todayDate) || data.sets[data.sets.length - 1];
-    
+
     // Get only today's sets
     const todaysSets = data.sets.filter(set => set.date === todayDate);
 
-    // Aggregate weight and volume data by date
+    // Aggregate weight/volume (or reps/total-reps for bodyweight exercises) by date
     const aggregatedData = data.sets.reduce((acc, set) => {
       const date = set.date;
       if (!acc[date]) {
         acc[date] = {
           maxWeight: set.weight,
-          totalVolume: set.weight * set.reps
+          totalVolume: set.weight * set.reps,
+          maxReps: set.reps,
+          totalReps: set.reps
         };
       } else {
         acc[date].maxWeight = Math.max(acc[date].maxWeight, set.weight);
         acc[date].totalVolume += set.weight * set.reps;
+        acc[date].maxReps = Math.max(acc[date].maxReps, set.reps);
+        acc[date].totalReps += set.reps;
       }
       return acc;
     }, {});
@@ -692,13 +704,23 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
       date,
       volume: data.totalVolume
     })).sort((a, b) => a.date.localeCompare(b.date));
-    
+
+    const repsData = Object.entries(aggregatedData).map(([date, data]) => ({
+      date,
+      reps: data.maxReps
+    })).sort((a, b) => a.date.localeCompare(b.date));
+
+    const totalRepsData = Object.entries(aggregatedData).map(([date, data]) => ({
+      date,
+      totalReps: data.totalReps
+    })).sort((a, b) => a.date.localeCompare(b.date));
+
     // Initialize input values if not set
     if (!inputValues[exerciseName]) {
       setInputValues(prev => ({
         ...prev,
         [exerciseName]: {
-          weight: lastSet?.weight || '',
+          weight: isBodyweight ? '' : (lastSet?.weight || ''),
           reps: lastSet?.reps || '',
           date: todayDate
         }
@@ -714,7 +736,7 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
               {prs[exerciseName] && (
                 <CardDescription>
                   <span className="text-amber-500 flex items-center gap-1">
-                    <Trophy size={16} /> PR: {Number(prs[exerciseName].weight)} kg
+                    <Trophy size={16} /> PR: {Number(prs[exerciseName].weight)} {isBodyweight ? 'reps' : 'kg'}
                   </span>
                 </CardDescription>
               )}
@@ -760,17 +782,19 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2">
-                    <div>
-                      <Label htmlFor="weight">Weight (kg)</Label>
-                      <Input
-                        id="weight"
-                        type="number"
-                        value={inputValues[exerciseName]?.weight || ''}
-                        onChange={(e) => handleInputChange(exerciseName, 'weight', e.target.value)}
-                        className={`${isDarkMode ? 'bg-zinc-800 border-zinc-700' : 'bg-zinc-50 border-zinc-200'}`}
-                      />
-                    </div>
+                  <div className={`grid gap-2 ${isBodyweight ? 'grid-cols-2' : 'grid-cols-3'}`}>
+                    {!isBodyweight && (
+                      <div>
+                        <Label htmlFor="weight">Weight (kg)</Label>
+                        <Input
+                          id="weight"
+                          type="number"
+                          value={inputValues[exerciseName]?.weight || ''}
+                          onChange={(e) => handleInputChange(exerciseName, 'weight', e.target.value)}
+                          className={`${isDarkMode ? 'bg-zinc-800 border-zinc-700' : 'bg-zinc-50 border-zinc-200'}`}
+                        />
+                      </div>
+                    )}
                     <div>
                       <Label htmlFor="reps">Reps</Label>
                       <Input
@@ -796,7 +820,7 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
                     className={`w-full mt-4 ${isDarkMode ? 'bg-zinc-700 hover:bg-zinc-600' : 'bg-zinc-800 hover:bg-zinc-700'} text-white`}
                     onClick={() => {
                       const values = inputValues[exerciseName];
-                      if (values?.weight && values?.reps) {
+                      if (values?.reps && (isBodyweight || values?.weight)) {
                         handleAddSet(exerciseName, values.weight, values.reps, values.date || todayDate);
                         handleInputChange(exerciseName, 'reps', '');
                       }
@@ -819,6 +843,7 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
                     index={data.sets.indexOf(set)}
                     deleteSetCallback={deleteSet}
                     isDarkMode={isDarkMode}
+                    isBodyweight={isBodyweight}
                   />
                 ))}
               </div>
@@ -826,11 +851,25 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
 
             {/* Charts with updated styling */}
             <div className="w-full h-64">
-              <ExerciseCharts
-                weightData={weightData}
-                volumeData={volumeData}
-                isDarkMode={isDarkMode}
-              />
+              {isBodyweight ? (
+                <ExerciseCharts
+                  weightData={repsData}
+                  volumeData={totalRepsData}
+                  isDarkMode={isDarkMode}
+                  primaryKey="reps"
+                  primaryLabel="Best Set"
+                  primaryAxisLabel="Best Set (reps)"
+                  secondaryKey="totalReps"
+                  secondaryLabel="Total Reps"
+                  secondaryAxisLabel="Total Reps (all sets)"
+                />
+              ) : (
+                <ExerciseCharts
+                  weightData={weightData}
+                  volumeData={volumeData}
+                  isDarkMode={isDarkMode}
+                />
+              )}
             </div>
           </div>
         </CardContent>
@@ -1079,8 +1118,8 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
                         }`}>
                           <span className={`font-medium ${isDarkMode ? 'text-zinc-100' : ''}`}>{pr.exerciseName}</span>
                           <div className="flex items-center gap-2">
-                            <span className={isDarkMode ? 'text-zinc-100' : ''}>{Number(pr.weight)} kg</span>
-                            <span className="text-green-500">+{Number(pr.surplus)} kg</span>
+                            <span className={isDarkMode ? 'text-zinc-100' : ''}>{Number(pr.weight)} {pr.isBodyweight ? 'reps' : 'kg'}</span>
+                            <span className="text-green-500">+{Number(pr.surplus)} {pr.isBodyweight ? 'reps' : 'kg'}</span>
                           </div>
                         </div>
                       ))}
@@ -1644,6 +1683,24 @@ const GymTrackerV3 = ({ userId, onSignOut }) => {
                   <option value="Pull">Pull</option>
                   <option value="Legs">Legs</option>
                 </select>
+                <div className="flex gap-2 mb-4">
+                  <Button
+                    type="button"
+                    variant={!newExercise.isBodyweight ? 'default' : 'outline'}
+                    className={`flex-1 ${!newExercise.isBodyweight && isDarkMode ? 'bg-zinc-700 hover:bg-zinc-600' : ''} ${newExercise.isBodyweight && isDarkMode ? 'border-zinc-600 hover:bg-zinc-700' : ''}`}
+                    onClick={() => setNewExercise(prev => ({ ...prev, isBodyweight: false }))}
+                  >
+                    Weighted
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={newExercise.isBodyweight ? 'default' : 'outline'}
+                    className={`flex-1 ${newExercise.isBodyweight && isDarkMode ? 'bg-zinc-700 hover:bg-zinc-600' : ''} ${!newExercise.isBodyweight && isDarkMode ? 'border-zinc-600 hover:bg-zinc-700' : ''}`}
+                    onClick={() => setNewExercise(prev => ({ ...prev, isBodyweight: true }))}
+                  >
+                    Bodyweight
+                  </Button>
+                </div>
                 <div className="flex gap-2">
                   <Button type="submit" className={`flex-1 ${isDarkMode ? 'bg-zinc-700 hover:bg-zinc-600' : ''}`}>Add</Button>
                   <Button 
