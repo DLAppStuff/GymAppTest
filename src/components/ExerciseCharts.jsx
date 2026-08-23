@@ -22,7 +22,19 @@ ChartJS.register(
   Legend
 );
 
-const ExerciseCharts = ({ weightData, volumeData, isDarkMode, hideVolume = false, showYear = false }) => {
+const ExerciseCharts = ({
+  weightData,
+  volumeData,
+  isDarkMode,
+  hideVolume = false,
+  showYear = false,
+  primaryKey = 'weight',
+  primaryLabel = 'Weight',
+  primaryAxisLabel = 'Weight (kg)',
+  secondaryKey = 'volume',
+  secondaryLabel = 'Volume',
+  secondaryAxisLabel = 'Volume (kg)',
+}) => {
   const getMaxValue = (data, key = 'weight') => {
     if (!data || data.length === 0) return 0;
     const max = Math.max(...data.map(d => d[key]));
@@ -45,10 +57,10 @@ const ExerciseCharts = ({ weightData, volumeData, isDarkMode, hideVolume = false
       labels: dates.map(formatDate),
       datasets: [
         {
-          label: 'Weight',
+          label: primaryLabel,
           data: dates.map(date => {
             const point = weightData.find(d => d.date === date);
-            return point ? point.weight : null;
+            return point ? point[primaryKey] : null;
           }),
           borderColor: isDarkMode ? '#f97316' : '#ea580c',
           backgroundColor: isDarkMode ? '#f97316' : '#ea580c',
@@ -58,10 +70,10 @@ const ExerciseCharts = ({ weightData, volumeData, isDarkMode, hideVolume = false
           pointHoverRadius: 6,
         },
         ...(!hideVolume ? [{
-          label: 'Volume',
+          label: secondaryLabel,
           data: dates.map(date => {
             const point = volumeData.find(d => d.date === date);
-            return point ? point.volume : null;
+            return point ? point[secondaryKey] : null;
           }),
           borderColor: isDarkMode ? '#a1a1aa' : '#52525b',
           backgroundColor: isDarkMode ? '#a1a1aa' : '#52525b',
@@ -72,7 +84,7 @@ const ExerciseCharts = ({ weightData, volumeData, isDarkMode, hideVolume = false
         }] : []),
       ],
     };
-  }, [weightData, volumeData, isDarkMode, hideVolume, showYear]);
+  }, [weightData, volumeData, isDarkMode, hideVolume, showYear, primaryKey, primaryLabel, secondaryKey, secondaryLabel]);
 
   const chartOptions = {
     responsive: true,
@@ -97,10 +109,10 @@ const ExerciseCharts = ({ weightData, volumeData, isDarkMode, hideVolume = false
         position: 'left',
         title: {
           display: true,
-          text: 'Weight (kg)',
+          text: primaryAxisLabel,
           color: isDarkMode ? '#e4e4e7' : '#27272a',
         },
-        max: getMaxValue(weightData),
+        max: getMaxValue(weightData, primaryKey),
         grid: {
           color: isDarkMode ? '#3f3f46' : '#e4e4e7',
         },
@@ -115,7 +127,7 @@ const ExerciseCharts = ({ weightData, volumeData, isDarkMode, hideVolume = false
           position: 'right',
           title: {
             display: true,
-            text: 'Volume (kg)',
+            text: secondaryAxisLabel,
             color: isDarkMode ? '#d4d4d8' : '#52525b',
           },
           grid: {
